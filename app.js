@@ -36,7 +36,11 @@
       console.log('[Event] Delete All button clicked');
       requestAdminAction('deleteAll');
     });
-    adminCancelBtn.addEventListener('click', closeAdminModal);
+    adminCancelBtn.addEventListener('click', () => {
+      console.log('[Event] Admin cancel clicked, clearing pending action');
+      pendingAdminAction = null;
+      closeAdminModal();
+    });
     adminConfirmBtn.addEventListener('click', confirmAdminAction);
     adminCodeInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') confirmAdminAction();
@@ -373,7 +377,6 @@
   function closeAdminModal() {
     adminModal.classList.add('hidden');
     adminCodeInput.value = '';
-    pendingAdminAction = null;
   }
 
   async function confirmAdminAction() {
@@ -386,17 +389,20 @@
     }
 
     adminCode = code;
+    
+    // Store the action before closing modal
+    const actionToExecute = pendingAdminAction;
     closeAdminModal();
 
-    if (!pendingAdminAction) {
+    if (!actionToExecute) {
       console.log('[confirmAdminAction] No pending action, returning');
       return;
     }
 
-    console.log('[confirmAdminAction] Processing pending action:', pendingAdminAction);
+    console.log('[confirmAdminAction] Processing pending action:', actionToExecute);
 
-    const targetBtn = pendingAdminAction.type === 'bulk' 
-      ? (pendingAdminAction.action === 'deleteClosed' ? deleteClosedBtn : deleteAllBtn)
+    const targetBtn = actionToExecute.type === 'bulk' 
+      ? (actionToExecute.action === 'deleteClosed' ? deleteClosedBtn : deleteAllBtn)
       : null;
     
     if (targetBtn) {
@@ -405,20 +411,20 @@
     }
     
     try {
-      if (pendingAdminAction.type === 'bulk') {
-        console.log('[confirmAdminAction] Making bulk API request:', { action: pendingAdminAction.action, adminCode });
+      if (actionToExecute.type === 'bulk') {
+        console.log('[confirmAdminAction] Making bulk API request:', { action: actionToExecute.action, adminCode });
         await apiRequest('?action=bulk', {
-          body: { action: pendingAdminAction.action, adminCode }
+          body: { action: actionToExecute.action, adminCode }
         });
         console.log('[confirmAdminAction] Bulk action successful');
         showMessage(listMessage, 'Bulk actie voltooid', 'success');
         loadItems();
-      } else if (pendingAdminAction.type === 'setStatus') {
-        console.log('[confirmAdminAction] Calling setItemStatus:', pendingAdminAction);
-        await setItemStatus(pendingAdminAction.id, pendingAdminAction.status);
-      } else if (pendingAdminAction.type === 'deleteItem') {
-        console.log('[confirmAdminAction] Calling setItemStatus for delete:', pendingAdminAction.id);
-        await setItemStatus(pendingAdminAction.id, 'deleted');
+      } else if (actionToExecute.type === 'setStatus') {
+        console.log('[confirmAdminAction] Calling setItemStatus:', actionToExecute);
+        await setItemStatus(actionToExecute.id, actionToExecute.status);
+      } else if (actionToExecute.type === 'deleteItem') {
+        console.log('[confirmAdminAction] Calling setItemStatus for delete:', actionToExecute.id);
+        await setItemStatus(actionToExecute.id, 'deleted');
       }
     } catch (error) {
       console.error('[confirmAdminAction] Error:', error);
