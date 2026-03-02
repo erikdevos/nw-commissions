@@ -57,10 +57,16 @@
       <section class="list-section">
         <div class="list-header">
           <h2>Boodschappenlijst</h2>
-          <div class="tabs">
-            <button class="tab active" data-status="open">Verzoeken</button>
-            <button class="tab" data-status="closed">Besteld</button>
-            <button class="tab" data-status="deleted">Verwijderd</button>
+          <div class="header-controls">
+            <div class="tabs">
+              <button class="tab active" data-status="open">Verzoeken</button>
+              <button class="tab" data-status="closed">Besteld</button>
+              <button class="tab" data-status="deleted">Verwijderd</button>
+            </div>
+            <button class="btn btn-secondary btn-sm" id="refreshBtn" title="Vernieuwen">
+              <span class="btn-text">🔄</span>
+              <span class="btn-loader">Bezig...</span>
+            </button>
           </div>
         </div>
 
@@ -68,7 +74,7 @@
         <div id="itemsList" class="items-list">
           <div class="loading">
             <div class="spinner"></div>
-            <p>Lijst laden...</p>
+            <p>Lijst ophalen...</p>
           </div>
         </div>
 

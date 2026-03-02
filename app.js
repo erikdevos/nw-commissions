@@ -7,6 +7,44 @@
   let pendingAdminAction = null;
   let adminCode = null;
   
+  // Caching system
+  const cache = {
+    items: new Map(),
+    lastFetch: new Map(),
+    cacheExpiry: 5 * 60 * 1000, // 5 minutes
+    
+    get(status) {
+      const cached = this.items.get(status);
+      const lastFetch = this.lastFetch.get(status) || 0;
+      
+      if (cached && (Date.now() - lastFetch) < this.cacheExpiry) {
+        console.log('[Cache] Hit for status:', status);
+        return cached;
+      }
+      
+      console.log('[Cache] Miss for status:', status);
+      return null;
+    },
+    
+    set(status, items) {
+      this.items.set(status, items);
+      this.lastFetch.set(status, Date.now());
+      console.log('[Cache] Set for status:', status, 'with', items.length, 'items');
+    },
+    
+    invalidate(status) {
+      this.items.delete(status);
+      this.lastFetch.delete(status);
+      console.log('[Cache] Invalidated for status:', status);
+    },
+    
+    clear() {
+      this.items.clear();
+      this.lastFetch.clear();
+      console.log('[Cache] Cleared all');
+    }
+  };
+  
   const ADMIN_CODE_STORAGE_KEY = 'grocery_admin_code';
   const ADMIN_CODE_EXPIRY_DAYS = 30;
 
@@ -19,6 +57,7 @@
   const copyBtn = document.getElementById('copyBtn');
   const deleteClosedBtn = document.getElementById('deleteClosedBtn');
   const deleteAllBtn = document.getElementById('deleteAllBtn');
+  const refreshBtn = document.getElementById('refreshBtn');
   const adminModal = document.getElementById('adminModal');
   const adminCodeInput = document.getElementById('adminCodeInput');
   const adminCancelBtn = document.getElementById('adminCancelBtn');
@@ -34,7 +73,7 @@
     console.log('[Grocery App] API Base URL:', API_BASE_URL);
     
     form.addEventListener('submit', handleSubmit);
-    tabs.forEach(tab => tab.addEventListener('click', handleTabClick));
+    tabs.forEach(tab => tab.addEventListener('click', handleTabClickDebounced));
     copyBtn.addEventListener('click', handleCopyText);
     deleteClosedBtn.addEventListener('click', () => {
       console.log('[Event] Delete Closed button clicked');
@@ -52,6 +91,15 @@
     adminConfirmBtn.addEventListener('click', confirmAdminAction);
     adminCodeInput.addEventListener('keypress', (e) => {
       if (e.key === 'Enter') confirmAdminAction();
+    });
+    
+    // Refresh button
+    refreshBtn.addEventListener('click', () => {
+      setButtonLoading(refreshBtn, true);
+      cache.clear();
+      loadItems(true).finally(() => {
+        setButtonLoading(refreshBtn, false);
+      });
     });
     
     // Auto-fill when AH URL changes
@@ -95,9 +143,20 @@
       method: 'GET'
     });
 
+    const startTime = performance.now();
+
     try {
       const response = await fetch(url, { method: 'GET' });
+      const endTime = performance.now();
+      const duration = endTime - startTime;
+      
       console.log('[API] Response status:', response.status, response.statusText);
+      console.log(`[API] Request completed in ${duration.toFixed(0)}ms`);
+      
+      // Log slow requests
+      if (duration > 3000) {
+        console.warn(`[API] Slow request detected: ${duration.toFixed(0)}ms for ${endpoint}`);
+      }
       
       if (!response.ok) {
         console.error('[API] HTTP error:', response.status, response.statusText);
@@ -114,7 +173,9 @@
 
       return data;
     } catch (error) {
-      console.error('[API] Request failed:', error);
+      const endTime = performance.now();
+      const duration = endTime - startTime;
+      console.error('[API] Request failed after', duration.toFixed(0), 'ms:', error);
       
       if (error.name === 'TypeError' && error.message.includes('fetch')) {
         throw new Error('Network error: Unable to connect to API. Make sure you are accessing the page via HTTP/HTTPS (not file://)');
@@ -274,6 +335,8 @@
       showMessage(formMessage, 'Item toegevoegd!', 'success');
       form.reset();
       
+      // Optimistic update: clear cache and refresh
+      cache.invalidate('open');
       if (currentStatus === 'open') {
         loadItems();
       }
@@ -382,14 +445,76 @@
     }
   }
 
-  async function loadItems() {
+  async function loadItems(forceRefresh = false) {
+    // Check cache first (unless force refresh)
+    if (!forceRefresh) {
+      const cachedItems = cache.get(currentStatus);
+      if (cachedItems) {
+        renderItems(cachedItems);
+        return;
+      }
+    }
+
     itemsList.innerHTML = '<div class="loading"><div class="spinner"></div><p>Lijst laden...</p></div>';
 
     try {
       const data = await apiRequest(`?action=list&status=${currentStatus}`);
-      renderItems(data.items || []);
+      const items = data.items || [];
+      
+      // Update cache
+      cache.set(currentStatus, items);
+      
+      renderItems(items);
+      
+      // Update bulk actions visibility
+      updateBulkActionsVisibility(currentStatus);
+      
+      // Preload other tabs immediately after first successful load
+      if (!forceRefresh && !window.hasPreloaded) {
+        window.hasPreloaded = true;
+        setTimeout(() => {
+          preloadAllTabs();
+        }, 500); // Shorter delay, but after initial render
+      }
     } catch (error) {
       itemsList.innerHTML = `<p class="empty-state">Error: ${error.message}</p>`;
+    }
+  }
+
+  // Preload all tab data to prevent subsequent API calls
+  let isPreloading = false;
+  async function preloadAllTabs() {
+    if (isPreloading) {
+      console.log('[Preload] Already preloading, skipping...');
+      return;
+    }
+    
+    isPreloading = true;
+    const statuses = ['closed', 'deleted']; // Only preload non-current tabs
+    
+    console.log('[Preload] Starting preload for tabs...');
+    
+    try {
+      // Load both tabs in parallel for maximum speed
+      const promises = statuses.map(async (status) => {
+        if (!cache.get(status)) {
+          try {
+            console.log(`[Preload] Loading ${status} items...`);
+            const data = await apiRequest(`?action=list&status=${status}`);
+            cache.set(status, data.items || []);
+            console.log(`[Preload] ${status} items cached:`, data.items?.length || 0);
+          } catch (error) {
+            console.error(`[Preload] Failed to load ${status}:`, error);
+          }
+        } else {
+          console.log(`[Preload] ${status} already cached`);
+        }
+      });
+      
+      await Promise.all(promises);
+    } finally {
+      isPreloading = false;
+      console.log('[Preload] Preload complete');
     }
   }
 
@@ -450,20 +575,22 @@
   }
 
   function createItemCard(item) {
-    const imageHtml = item.imageUrl 
-      ? `<img src="${escapeHtml(item.imageUrl)}" alt="${escapeHtml(item.item)}" class="item-image" onerror="this.style.display='none'">`
-      : '';
+    const imageHtml = item.ahUrl 
+      ? `<a href="${escapeHtml(item.ahUrl)}" target="_blank" rel="noopener" class="item-image-link">
+          <img src="${escapeHtml(item.imageUrl)}" alt="${escapeHtml(item.item)}" class="item-image" onerror="this.style.display='none'">
+        </a>`
+      : `<img src="${escapeHtml(item.imageUrl)}" alt="${escapeHtml(item.item)}" class="item-image" onerror="this.style.display='none'">`;
 
     const quantityHtml = item.quantity 
       ? `<span><strong>${escapeHtml(item.quantity)}</strong>x</span>` 
       : '';
 
     const substituteHtml = item.substituteFor 
-      ? `<span>(instead of ${escapeHtml(item.substituteFor)})</span>` 
+      ? `<span>In plaats van ${escapeHtml(item.substituteFor)}</span>` 
       : '';
 
     const ahLinkHtml = item.ahUrl 
-      ? `<a href="${escapeHtml(item.ahUrl)}" target="_blank" rel="noopener" class="ah-link">Bekijk op AH.nl →</a>` 
+      ? `<a href="${escapeHtml(item.ahUrl)}" target="_blank" rel="noopener" class="btn btn-sm btn-secondary">Ga naar AH</a>` 
       : '';
 
     const createdAt = formatDate(item.createdAt);
@@ -472,9 +599,10 @@
     if (item.status === 'open') {
       actionsHtml = `
         <button class="btn btn-sm btn-secondary close-btn" data-id="${item.id}">
-          <span class="btn-text">Besteld</span>
+          <span class="btn-text">Besteld?</span>
           <span class="btn-loader">Bezig...</span>
         </button>
+        ${ahLinkHtml}
         <button class="btn btn-sm btn-danger delete-btn" data-id="${item.id}">
           <span class="btn-text">Verwijderen</span>
           <span class="btn-loader">Bezig...</span>
@@ -486,10 +614,7 @@
           <span class="btn-text">Toevoegen</span>
           <span class="btn-loader">Bezig...</span>
         </button>
-        <button class="btn btn-sm btn-secondary reopen-btn" data-id="${item.id}">
-          <span class="btn-text">Openen</span>
-          <span class="btn-loader">Bezig...</span>
-        </button>
+        ${ahLinkHtml}
         <button class="btn btn-sm btn-danger delete-btn" data-id="${item.id}">
           <span class="btn-text">Verwijderen</span>
           <span class="btn-loader">Bezig...</span>
@@ -505,7 +630,6 @@
           <div class="item-details">
             ${quantityHtml}
             ${substituteHtml}
-            ${ahLinkHtml}
           </div>
           <div class="item-meta">
             Toegevoegd door ${escapeHtml(item.name)} • ${createdAt}
@@ -548,6 +672,52 @@
     loadItems();
   }
 
+  // Debounced tab switching to prevent rapid API calls
+  let debouncedLoadTimeout;
+  
+  function handleTabClickDebounced(e) {
+    tabs.forEach(t => t.classList.remove('active'));
+    e.target.classList.add('active');
+    const newStatus = e.target.dataset.status;
+    
+    // Update bulk actions visibility
+    updateBulkActionsVisibility(newStatus);
+    
+    // Check if we have cached data
+    const cachedItems = cache.get(newStatus);
+    if (cachedItems) {
+      console.log(`[Tab] Loading ${newStatus} from cache (${cachedItems.length} items)`);
+      currentStatus = newStatus;
+      // Load immediately from cache, no delay needed
+      loadItems();
+      return;
+    } else {
+      console.log(`[Tab] Loading ${newStatus} from API`);
+      // Show loading state immediately for better UX
+      itemsList.innerHTML = '<div class="loading"><div class="spinner"></div><p>Lijst laden...</p></div>';
+    }
+    
+    currentStatus = newStatus;
+    
+    clearTimeout(debouncedLoadTimeout);
+    debouncedLoadTimeout = setTimeout(() => {
+      loadItems();
+    }, 100);
+  }
+
+  function updateBulkActionsVisibility(status) {
+    // Show deleteClosedBtn only on 'closed' tab
+    if (deleteClosedBtn) {
+      if (status === 'closed') {
+        deleteClosedBtn.style.display = 'inline-flex';
+        console.log('[Bulk Actions] Showing delete closed button');
+      } else {
+        deleteClosedBtn.style.display = 'none';
+        console.log('[Bulk Actions] Hiding delete closed button');
+      }
+    }
+  }
+
   async function setItemStatus(id, status) {
     console.log('[setItemStatus] Called with:', { id, status, hasAdminCode: !!adminCode });
     const requiresAdmin = status === 'deleted';
@@ -565,6 +735,12 @@
         body: { id, status, adminCode: requiresAdmin ? adminCode : undefined }
       });
       console.log('[setItemStatus] API request successful, reloading items');
+      
+      // Invalidate all relevant caches
+      cache.invalidate('open');
+      cache.invalidate('closed');
+      cache.invalidate('deleted');
+      
       loadItems();
     } catch (error) {
       console.error('[setItemStatus] Error:', error);
@@ -588,8 +764,14 @@
   async function handleCopyText() {
     setButtonLoading(copyBtn, true);
     try {
-      const data = await apiRequest('?action=list&status=open');
-      const items = data.items || [];
+      // Try cache first
+      let items = cache.get('open');
+      
+      if (!items) {
+        const data = await apiRequest('?action=list&status=open');
+        items = data.items || [];
+        cache.set('open', items);
+      }
 
       if (items.length === 0) {
         showMessage(listMessage, 'No open items to copy', 'error');
@@ -603,7 +785,7 @@
         }
         line += item.item;
         if (item.substituteFor) {
-          line += ` (instead of ${item.substituteFor})`;
+          line += ` (In plaats van ${item.substituteFor})`;
         }
         line += ` (from ${item.name})`;
         return line;
@@ -712,6 +894,9 @@
         });
         
         showMessage(listMessage, 'Items verwijderd', 'success');
+        
+        // Clear all caches after bulk operations
+        cache.clear();
         loadItems();
       } else if (actionToExecute.type === 'deleteItem') {
         console.log('[executeAdminAction] Delete item:', actionToExecute.id);
@@ -720,6 +905,12 @@
         });
         
         showMessage(listMessage, 'Item verwijderd', 'success');
+        
+        // Invalidate relevant caches
+        cache.invalidate('open');
+        cache.invalidate('closed');
+        cache.invalidate('deleted');
+        
         loadItems();
       }
     } catch (error) {
