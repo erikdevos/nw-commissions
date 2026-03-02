@@ -145,8 +145,23 @@ header h1 {
 }
 
 .btn.loading .btn-loader {
-  display: inline;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
   position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.btn.loading .btn-loader::before {
+  content: '';
+  width: 16px;
+  height: 16px;
+  border: 2px solid transparent;
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
 }
 
 .btn-primary {

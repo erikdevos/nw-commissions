@@ -117,17 +117,17 @@
     };
 
     if (!data.name || !data.item) {
-      showMessage(formMessage, 'Name and item are required', 'error');
+      showMessage(formMessage, 'Naam en item zijn verplicht', 'error');
       return;
     }
 
     if (data.imageUrl && !isValidUrl(data.imageUrl)) {
-      showMessage(formMessage, 'Invalid image URL', 'error');
+      showMessage(formMessage, 'Ongeldige afbeeldings URL', 'error');
       return;
     }
 
     if (data.ahUrl && !isValidUrl(data.ahUrl)) {
-      showMessage(formMessage, 'Invalid AH URL', 'error');
+      showMessage(formMessage, 'Ongeldige AH URL', 'error');
       return;
     }
 
@@ -139,7 +139,7 @@
         body: data
       });
 
-      showMessage(formMessage, 'Item added successfully!', 'success');
+      showMessage(formMessage, 'Item toegevoegd!', 'success');
       form.reset();
       
       if (currentStatus === 'open') {
@@ -162,7 +162,7 @@
   }
 
   async function loadItems() {
-    itemsList.innerHTML = '<div class="loading"><div class="spinner"></div><p>Loading items...</p></div>';
+    itemsList.innerHTML = '<div class="loading"><div class="spinner"></div><p>Lijst laden...</p></div>';
 
     try {
       const data = await apiRequest(`?action=list&status=${currentStatus}`);
@@ -174,7 +174,7 @@
 
   function renderItems(items) {
     if (items.length === 0) {
-      itemsList.innerHTML = '<p class="empty-state">No items found</p>';
+      itemsList.innerHTML = '<p class="empty-state">Geen items gevonden</p>';
       return;
     }
 
@@ -210,7 +210,7 @@
       : '';
 
     const ahLinkHtml = item.ahUrl 
-      ? `<a href="${escapeHtml(item.ahUrl)}" target="_blank" rel="noopener" class="ah-link">View at AH →</a>` 
+      ? `<a href="${escapeHtml(item.ahUrl)}" target="_blank" rel="noopener" class="ah-link">Bekijk op AH.nl →</a>` 
       : '';
 
     const createdAt = formatDate(item.createdAt);
@@ -218,13 +218,13 @@
     let actionsHtml = '';
     if (item.status === 'open') {
       actionsHtml = `
-        <button class="btn btn-sm btn-secondary close-btn" data-id="${item.id}">Mark as Ordered</button>
-        <button class="btn btn-sm btn-danger delete-btn" data-id="${item.id}">Delete</button>
+        <button class="btn btn-sm btn-secondary close-btn" data-id="${item.id}">Besteld</button>
+        <button class="btn btn-sm btn-danger delete-btn" data-id="${item.id}">Verwijderen</button>
       `;
     } else if (item.status === 'closed') {
       actionsHtml = `
-        <button class="btn btn-sm btn-secondary reopen-btn" data-id="${item.id}">Reopen</button>
-        <button class="btn btn-sm btn-danger delete-btn" data-id="${item.id}">Delete</button>
+        <button class="btn btn-sm btn-secondary reopen-btn" data-id="${item.id}">Openen</button>
+        <button class="btn btn-sm btn-danger delete-btn" data-id="${item.id}">Verwijderen</button>
       `;
     }
 
@@ -239,7 +239,7 @@
             ${ahLinkHtml}
           </div>
           <div class="item-meta">
-            Added by ${escapeHtml(item.name)} • ${createdAt}
+            Toegevoegd door ${escapeHtml(item.name)} • ${createdAt}
           </div>
         </div>
         <div class="item-actions">
@@ -260,11 +260,12 @@
     if (!isoString) return '';
     try {
       const date = new Date(isoString);
-      return date.toLocaleDateString('en-US', {
-        month: 'short',
+      return date.toLocaleDateString('nl-NL', {
         day: 'numeric',
+        month: 'long',
         hour: '2-digit',
-        minute: '2-digit'
+        minute: '2-digit',
+        hour12: false
       });
     } catch {
       return isoString;
@@ -344,7 +345,7 @@
   }
 
   function requestAdminAction(action) {
-    pendingAdminAction = { type: 'bulk', action };
+    pendingAdminAction = { type: 'bulk', action: action === 'deleteClosed' ? 'deleteClosed' : 'deleteAll' };
     openAdminModal();
   }
 
@@ -382,7 +383,7 @@
         await apiRequest('?action=bulk', {
           body: { action: pendingAdminAction.action, adminCode }
         });
-        showMessage(listMessage, 'Bulk action completed', 'success');
+        showMessage(listMessage, 'Bulk actie voltooid', 'success');
         loadItems();
       } else if (pendingAdminAction.type === 'setStatus') {
         await setItemStatus(pendingAdminAction.id, pendingAdminAction.status);
