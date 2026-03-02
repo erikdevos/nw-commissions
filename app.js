@@ -46,28 +46,27 @@
       throw new Error('API_BASE_URL not configured. Please set up config.js');
     }
 
-    const url = `${API_BASE_URL}${endpoint}`;
+    let url = `${API_BASE_URL}${endpoint}`;
+    
+    if (options.body && typeof options.body === 'object') {
+      const params = new URLSearchParams();
+      Object.keys(options.body).forEach(key => {
+        if (options.body[key] !== undefined && options.body[key] !== null) {
+          params.append(key, options.body[key]);
+        }
+      });
+      const separator = url.includes('?') ? '&' : '?';
+      url = `${url}${separator}${params.toString()}`;
+      console.log('[API] Request params:', options.body);
+    }
+    
     console.log('[API] Request:', {
       url,
-      method: options.method || 'GET',
-      hasBody: !!options.body
+      method: 'GET'
     });
 
-    const fetchOptions = {
-      ...options,
-      headers: {
-        'Content-Type': 'application/json',
-        ...options.headers
-      }
-    };
-
-    if (options.body && typeof options.body === 'object') {
-      fetchOptions.body = JSON.stringify(options.body);
-      console.log('[API] Request body:', options.body);
-    }
-
     try {
-      const response = await fetch(url, fetchOptions);
+      const response = await fetch(url, { method: 'GET' });
       console.log('[API] Response status:', response.status, response.statusText);
       
       if (!response.ok) {
@@ -137,7 +136,6 @@
 
     try {
       await apiRequest('?action=add', {
-        method: 'POST',
         body: data
       });
 
@@ -289,7 +287,6 @@
 
     try {
       await apiRequest('?action=setStatus', {
-        method: 'POST',
         body: { id, status, adminCode: requiresAdmin ? adminCode : undefined }
       });
       loadItems();
@@ -366,7 +363,6 @@
     try {
       if (pendingAdminAction.type === 'bulk') {
         await apiRequest('?action=bulk', {
-          method: 'POST',
           body: { action: pendingAdminAction.action, adminCode }
         });
         showMessage(listMessage, 'Bulk action completed', 'success');

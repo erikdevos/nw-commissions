@@ -98,13 +98,7 @@ function getClientInfo(e) {
 }
 
 function handleAdd(e) {
-  let data;
-  
-  try {
-    data = JSON.parse(e.postData.contents);
-  } catch (err) {
-    return { ok: false, error: 'Invalid JSON' };
-  }
+  const data = e.parameter;
   
   if (!data.name || !data.item) {
     return { ok: false, error: 'Name and item are required' };
@@ -173,13 +167,7 @@ function handleList(e) {
 }
 
 function handleSetStatus(e) {
-  let data;
-  
-  try {
-    data = JSON.parse(e.postData.contents);
-  } catch (err) {
-    return { ok: false, error: 'Invalid JSON' };
-  }
+  const data = e.parameter;
   
   if (!data.id || !data.status) {
     return { ok: false, error: 'ID and status are required' };
@@ -221,13 +209,7 @@ function handleSetStatus(e) {
 }
 
 function handleBulk(e) {
-  let data;
-  
-  try {
-    data = JSON.parse(e.postData.contents);
-  } catch (err) {
-    return { ok: false, error: 'Invalid JSON' };
-  }
+  const data = e.parameter;
   
   if (!data.action || !data.adminCode) {
     return { ok: false, error: 'Action and admin code are required' };
