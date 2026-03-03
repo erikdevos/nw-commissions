@@ -766,6 +766,17 @@
         console.log('[Bulk Actions] Hiding delete closed button');
       }
     }
+
+    // Show copyBtn only on 'open' tab
+    if (copyBtn) {
+      if (status === 'open') {
+        copyBtn.style.display = 'inline-flex';
+        console.log('[Bulk Actions] Showing copy button');
+      } else {
+        copyBtn.style.display = 'none';
+        console.log('[Bulk Actions] Hiding copy button');
+      }
+    }
   }
 
   async function setItemStatus(id, status) {

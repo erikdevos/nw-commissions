@@ -57,17 +57,16 @@ header {
     color: var(--secondary);
   }
 
-  @media (min-width: 640px) {
-    .logo {
-      max-width: 200px;
-    }
-  }
+
 }
 
 .logo {
-  max-width: 120px;
+  max-width: 150px;
   height: auto;
   margin-bottom: 1rem;
+    @media (min-width: 640px) {
+      max-width: 200px;
+    }
 }
 
 h1, h2, h3, h4, h5, h6 {
@@ -78,17 +77,20 @@ h1, h2, h3, h4, h5, h6 {
 .list-section {
   background: var(--card-bg);
   border-radius: 0.5rem;
-  padding: 1.5rem;
-  margin-bottom: 1.5rem;
-
+  padding: 1rem;
+  @media (min-width: 640px) {
+    padding: 1.5rem;
+  }
   h2 {
     font-family: 'Epilogue', sans-serif;
-    font-size: 1.25rem;
+    font-size: 1.3rem;
+    line-height: 1.3;
     font-weight: 600;
     color: var(--secondary);
 
     @media (min-width: 640px) {
-       margin-bottom: 1rem;
+      font-size: 1.5rem;
+      margin-bottom: 1rem;
     }
   }
 }
@@ -384,6 +386,7 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
+
 .export-actions-bottom {
   display: flex;
   justify-content: center;
@@ -636,11 +639,15 @@ h1, h2, h3, h4, h5, h6 {
   }
 }
 
+.main-content {
+  display: grid;
+  gap: 3rem;
+}
+
 @media (min-width: 640px) {
   .main-content {
-    display: grid;
-    grid-template-columns: 1fr 1.5fr;
-    gap: 3rem;
+
+    grid-template-columns: 2fr 3fr;
     align-items: start;
   }
 }
