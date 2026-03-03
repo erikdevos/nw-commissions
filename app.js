@@ -824,27 +824,27 @@
       }
 
       if (items.length === 0) {
-        showMessage(listMessage, 'No open items to copy', 'error');
+        showMessage(listMessage, 'Geen open items om te kopiëren', 'error');
         return;
       }
 
       const text = items.map(item => {
-        let line = '- ';
+        let line = '';
         if (item.quantity) {
-          line += `${item.quantity} `;
+          line += `${item.quantity}x `;
         }
         line += item.item;
         if (item.substituteFor) {
-          line += ` (In plaats van ${item.substituteFor})`;
+          line += ` (in plaats van ${item.substituteFor})`;
         }
-        line += ` (from ${item.name})`;
+        line += ` - ${item.name}`;
         return line;
       }).join('\n');
 
       await navigator.clipboard.writeText(text);
-      showMessage(listMessage, 'Copied to clipboard!', 'success');
+      showMessage(listMessage, 'Lijst gekopieerd naar klembord!', 'success');
     } catch (error) {
-      showMessage(listMessage, 'Failed to copy: ' + error.message, 'error');
+      showMessage(listMessage, 'Kopiëren mislukt: ' + error.message, 'error');
     } finally {
       setButtonLoading(copyBtn, false);
     }
