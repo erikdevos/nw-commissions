@@ -80,7 +80,6 @@ h1, h2, h3, h4, h5, h6 {
   border-radius: 0.5rem;
   padding: 1.5rem;
   margin-bottom: 1.5rem;
-  box-shadow: var(--shadow);
 
   h2 {
     font-family: 'Epilogue', sans-serif;
@@ -521,6 +520,13 @@ h1, h2, h3, h4, h5, h6 {
 .item-substitute {
   font-size: 0.875rem;
   color: var(--text-muted);
+}
+
+.item-ordered {
+  font-size: 0.875rem;
+  color: var(--primary);
+  font-weight: 600;
+  margin-top: 0.25rem;
 }
 
 .item-actions {

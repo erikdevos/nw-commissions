@@ -614,6 +614,11 @@
       : '';
 
     const createdAt = formatDate(item.createdAt);
+    
+    // Add "Besteld [date]" line for closed items
+    const orderedAtHtml = item.status === 'closed' && item.closedAt 
+      ? `<div class="item-ordered">Besteld ${formatDateOnly(item.closedAt)}</div>` 
+      : '';
 
     let actionsHtml = '';
     if (item.status === 'open') {
@@ -650,6 +655,7 @@
           <div class="item-details">
             ${quantityHtml}
             ${substituteHtml}
+            ${orderedAtHtml}
           </div>
           <div class="item-meta">
             Toegevoegd door ${escapeHtml(item.name)} • ${createdAt}
@@ -679,6 +685,19 @@
         hour: '2-digit',
         minute: '2-digit',
         hour12: false
+      });
+    } catch {
+      return isoString;
+    }
+  }
+
+  function formatDateOnly(isoString) {
+    if (!isoString) return '';
+    try {
+      const date = new Date(isoString);
+      return date.toLocaleDateString('nl-NL', {
+        day: '2-digit',
+        month: '2-digit'
       });
     } catch {
       return isoString;
