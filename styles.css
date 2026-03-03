@@ -311,6 +311,20 @@ h1, h2, h3, h4, h5, h6 {
       align-self: center;
       max-width: 200px;
     }
+
+    &.loading {
+      .btn-text {
+        visibility: visible;
+      }
+
+      .btn-loader {
+        display: none;
+      }
+
+      svg {
+        animation: spin 0.8s linear infinite;
+      }
+    }
   }
 }
 
