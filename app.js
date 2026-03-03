@@ -430,7 +430,7 @@
               .replace(/-/g, ' ')
               .replace(/\b\w/g, l => l.toUpperCase());
             
-            console.log('[extractFromAh] URL extraction:', { productNameSlug, title: productTitle });
+            console.log('[extractFromAh] Extracted product name:', productTitle);
           }
         }
       } catch (urlError) {
