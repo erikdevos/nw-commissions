@@ -1,6 +1,11 @@
 const SHEET_NAME = 'Items';
 const ADMIN_CODE = PropertiesService.getScriptProperties().getProperty('ADMIN_CODE') || 'admin123';
 
+// IP Whitelist - Add authorized IPs here
+const ALLOWED_IPS = [
+  '185.38.90.170'  // Your IP - add more IPs as needed
+];
+
 const COLUMNS = {
   id: 0,
   createdAt: 1,
@@ -30,6 +35,18 @@ function doPost(e) {
 
 function handleRequest(e) {
   const action = e.parameter.action || 'list';
+  const clientIP = e.parameter.ip || 'unknown';
+  
+  // Check IP whitelist
+  if (!ALLOWED_IPS.includes(clientIP)) {
+    Logger.log('Access denied for IP: ' + clientIP);
+    return ContentService
+      .createTextOutput(JSON.stringify({ 
+        ok: false, 
+        error: 'Access denied - IP not authorized' 
+      }))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
   
   try {
     let result;

@@ -172,6 +172,21 @@
       
       if (!response.ok) {
         console.error('[API] HTTP error:', response.status, response.statusText);
+        
+        // Handle 403 Forbidden (IP not authorized)
+        if (response.status === 403) {
+          document.body.innerHTML = `
+            <div style="display: flex; align-items: center; justify-content: center; min-height: 100vh; font-family: 'Poppins', sans-serif; background: #efeeff;">
+              <div style="text-align: center; padding: 2rem; background: white; border-radius: 10px; box-shadow: 0 2px 8px rgba(28, 39, 79, 0.08); max-width: 500px;">
+                <h1 style="color: #a73232; margin-bottom: 1rem;">Access Denied</h1>
+                <p style="color: #6b7280; margin-bottom: 0.5rem;">Your IP address is not authorized to access this page.</p>
+                <p style="color: #6b7280; font-size: 0.875rem;">Contact the administrator if you believe this is an error.</p>
+              </div>
+            </div>
+          `;
+          throw new Error('Access denied - IP not authorized');
+        }
+        
         throw new Error(`HTTP ${response.status}: ${response.statusText}`);
       }
       
@@ -180,6 +195,20 @@
 
       if (!data.ok) {
         console.error('[API] API error:', data.error);
+        
+        // Handle IP authorization errors from API response
+        if (data.error && data.error.includes('IP not authorized')) {
+          document.body.innerHTML = `
+            <div style="display: flex; align-items: center; justify-content: center; min-height: 100vh; font-family: 'Poppins', sans-serif; background: #efeeff;">
+              <div style="text-align: center; padding: 2rem; background: white; border-radius: 10px; box-shadow: 0 2px 8px rgba(28, 39, 79, 0.08); max-width: 500px;">
+                <h1 style="color: #a73232; margin-bottom: 1rem;">Access Denied</h1>
+                <p style="color: #6b7280; margin-bottom: 0.5rem;">Your IP address is not authorized to access this page.</p>
+                <p style="color: #6b7280; font-size: 0.875rem;">Contact the administrator if you believe this is an error.</p>
+              </div>
+            </div>
+          `;
+        }
+        
         throw new Error(data.error || 'Request failed');
       }
 
