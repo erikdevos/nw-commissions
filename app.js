@@ -55,8 +55,8 @@
   const listMessage = document.getElementById('listMessage');
   const tabs = document.querySelectorAll('.tab');
   const copyBtn = document.getElementById('copyBtn');
-  const deleteClosedBtn = document.getElementById('deleteClosedBtn');
-  const deleteAllBtn = document.getElementById('deleteAllBtn');
+  const deleteTabItemsBtn = document.getElementById('deleteTabItemsBtn');
+  const deleteTabItemsBtnText = document.getElementById('deleteTabItemsBtnText');
   const refreshBtn = document.getElementById('refreshBtn');
   const adminModal = document.getElementById('adminModal');
   const adminCodeInput = document.getElementById('adminCodeInput');
@@ -75,13 +75,9 @@
     form.addEventListener('submit', handleSubmit);
     tabs.forEach(tab => tab.addEventListener('click', handleTabClickDebounced));
     copyBtn.addEventListener('click', handleCopyText);
-    deleteClosedBtn.addEventListener('click', () => {
-      console.log('[Event] Delete Closed button clicked');
-      requestAdminAction('deleteClosed');
-    });
-    deleteAllBtn.addEventListener('click', () => {
-      console.log('[Event] Delete All button clicked');
-      requestAdminAction('deleteAll');
+    deleteTabItemsBtn.addEventListener('click', () => {
+      console.log('[Event] Delete tab items button clicked for tab:', currentStatus);
+      handleDeleteTabItems();
     });
     adminCancelBtn.addEventListener('click', () => {
       console.log('[Event] Admin cancel clicked, clearing pending action');
@@ -576,33 +572,38 @@
   }
 
   function createItemCard(item) {
-    const imageHtml = item.ahUrl 
-      ? `<a href="${escapeHtml(item.ahUrl)}" target="_blank" rel="noopener" class="item-image-link">
-          <img src="${escapeHtml(item.imageUrl)}" alt="${escapeHtml(item.item)}" class="item-image" onerror="this.style.display='none'">
-        </a>`
-      : `<img src="${escapeHtml(item.imageUrl)}" alt="${escapeHtml(item.item)}" class="item-image" onerror="this.style.display='none'">`;
-
-    const quantityHtml = item.quantity 
-      ? `<div class="item-quantity"><strong>${escapeHtml(item.quantity)}</strong>x</div>` 
-      : '';
-
-    const substituteHtml = item.substituteFor 
-      ? `<div class="item-substitute">In plaats van ${escapeHtml(item.substituteFor)}</div>` 
-      : '';
-
-    const ahLinkHtml = item.ahUrl 
-      ? `<a href="${escapeHtml(item.ahUrl)}" target="_blank" rel="noopener" class="btn btn-sm btn-secondary">Ga naar AH</a>` 
-      : '';
-
     const createdAt = formatDate(item.createdAt);
     
     // Add date line for closed and deleted items
     let statusDateHtml = '';
     if (item.status === 'closed' && item.closedAt) {
-      statusDateHtml = `<div class="item-ordered">Besteld ${formatDateOnly(item.closedAt)}</div>`;
+      statusDateHtml = `<div class="item-ordered">Besteld op ${formatDateOnly(item.closedAt)}</div>`;
     } else if (item.status === 'deleted' && item.deletedAt) {
-      statusDateHtml = `<div class="item-deleted">Verwijderd ${formatDateOnly(item.deletedAt)}</div>`;
+      statusDateHtml = `<div class="item-deleted">Verwijderd op ${formatDateOnly(item.deletedAt)}</div>`;
     }
+
+    // Create image container with status label
+    const imageHtml = item.ahUrl 
+      ? `<div class="item-image-container">
+          <a href="${escapeHtml(item.ahUrl)}" target="_blank" rel="noopener" class="item-image-link">
+            <img src="${escapeHtml(item.imageUrl)}" alt="${escapeHtml(item.item)}" class="item-image" onerror="this.style.display='none'">
+          </a>
+          ${statusDateHtml}
+        </div>`
+      : `<div class="item-image-container">
+          <img src="${escapeHtml(item.imageUrl)}" alt="${escapeHtml(item.item)}" class="item-image" onerror="this.style.display='none'">
+          ${statusDateHtml}
+        </div>`;
+
+    const substituteHtml = item.substituteFor 
+      ? `<div class="item-substitute">In plaats van ${escapeHtml(item.substituteFor)}</div>` 
+      : '';
+
+    // Create item name with optional link and quantity
+    const quantitySpan = item.quantity ? `<span class="item-quantity-inline">(${escapeHtml(item.quantity)}x)</span>` : '';
+    const itemNameHtml = item.ahUrl
+      ? `<a href="${escapeHtml(item.ahUrl)}" target="_blank" rel="noopener" class="item-name item-name-link">${escapeHtml(item.item)} ${quantitySpan}</a>`
+      : `<div class="item-name">${escapeHtml(item.item)} ${quantitySpan}</div>`;
 
     let actionsHtml = '';
     if (item.status === 'open') {
@@ -611,7 +612,6 @@
           <span class="btn-text">Besteld?</span>
           <span class="btn-loader">Bezig...</span>
         </button>
-        ${ahLinkHtml}
         <button class="btn btn-sm btn-danger delete-btn" data-id="${item.id}">
           <span class="btn-text">Verwijderen</span>
           <span class="btn-loader">Bezig...</span>
@@ -623,7 +623,6 @@
           <span class="btn-text">Toevoegen</span>
           <span class="btn-loader">Bezig...</span>
         </button>
-        ${ahLinkHtml}
         <button class="btn btn-sm btn-danger delete-btn" data-id="${item.id}">
           <span class="btn-text">Verwijderen</span>
           <span class="btn-loader">Bezig...</span>
@@ -635,7 +634,6 @@
           <span class="btn-text">Opnieuw bestellen</span>
           <span class="btn-loader">Bezig...</span>
         </button>
-        ${ahLinkHtml}
       `;
     }
 
@@ -643,14 +641,12 @@
       <div class="item-card ${item.status}">
         ${imageHtml}
         <div class="item-content">
-          <div class="item-name">${escapeHtml(item.item)}</div>
+          ${itemNameHtml}
           <div class="item-details">
-            ${quantityHtml}
             ${substituteHtml}
-            ${statusDateHtml}
           </div>
           <div class="item-meta">
-            Toegevoegd door ${escapeHtml(item.name)} • ${createdAt}
+            Aangevraagd door ${escapeHtml(item.name)} • ${createdAt}
           </div>
         </div>
         <div class="item-actions">
@@ -737,14 +733,23 @@
   }
 
   function updateBulkActionsVisibility(status) {
-    // Show deleteClosedBtn only on 'closed' tab
-    if (deleteClosedBtn) {
-      if (status === 'closed') {
-        deleteClosedBtn.style.display = 'inline-flex';
-        console.log('[Bulk Actions] Showing delete closed button');
+    // Update delete button text and visibility based on current tab
+    if (deleteTabItemsBtn && deleteTabItemsBtnText) {
+      if (status === 'open') {
+        deleteTabItemsBtnText.textContent = 'Verwijder alle verzoeken';
+        deleteTabItemsBtn.style.display = 'inline-flex';
+        console.log('[Bulk Actions] Showing delete button for open items');
+      } else if (status === 'closed') {
+        deleteTabItemsBtnText.textContent = 'Verwijder bestelde items';
+        deleteTabItemsBtn.style.display = 'inline-flex';
+        console.log('[Bulk Actions] Showing delete button for closed items');
+      } else if (status === 'deleted') {
+        deleteTabItemsBtnText.textContent = 'Prullenbak legen';
+        deleteTabItemsBtn.style.display = 'inline-flex';
+        console.log('[Bulk Actions] Showing delete button for deleted items');
       } else {
-        deleteClosedBtn.style.display = 'none';
-        console.log('[Bulk Actions] Hiding delete closed button');
+        deleteTabItemsBtn.style.display = 'none';
+        console.log('[Bulk Actions] Hiding delete button');
       }
     }
 
@@ -870,9 +875,27 @@
     }
   }
   
+  function handleDeleteTabItems() {
+    // Determine which delete action to use based on current tab
+    let action;
+    if (currentStatus === 'open') {
+      action = 'deleteOpen';
+    } else if (currentStatus === 'closed') {
+      action = 'deleteClosed';
+    } else if (currentStatus === 'deleted') {
+      action = 'permanentDelete';
+    } else {
+      console.error('[handleDeleteTabItems] Unknown status:', currentStatus);
+      return;
+    }
+    
+    console.log('[handleDeleteTabItems] Calling requestAdminAction with:', action);
+    requestAdminAction(action);
+  }
+
   function requestAdminAction(action) {
     console.log('[requestAdminAction] Called with:', action);
-    const bulkAction = action === 'deleteClosed' ? 'deleteClosed' : 'deleteAll';
+    const bulkAction = action;
     console.log('[requestAdminAction] Setting pending action:', { type: 'bulk', action: bulkAction });
     pendingAdminAction = { type: 'bulk', action: bulkAction };
     
@@ -883,8 +906,18 @@
       adminCode = storedCode;
       
       // Show confirmation dialog instead of admin modal
-      const actionName = bulkAction === 'deleteClosed' ? 'bestelde items' : 'alle items';
-      if (confirm(`Weet je zeker dat je ${actionName} wilt verwijderen?`)) {
+      let confirmMessage;
+      if (bulkAction === 'deleteOpen') {
+        confirmMessage = `Weet je zeker dat je alle open items wilt verwijderen?\n\nDeze items worden verplaatst naar de prullenbak.`;
+      } else if (bulkAction === 'deleteClosed') {
+        confirmMessage = `Weet je zeker dat je alle bestelde items wilt verwijderen?\n\nDeze items worden verplaatst naar de prullenbak.`;
+      } else if (bulkAction === 'deleteAll') {
+        confirmMessage = `Weet je zeker dat je alle open en bestelde items wilt verwijderen?\n\nDeze items worden verplaatst naar de prullenbak.`;
+      } else if (bulkAction === 'permanentDelete') {
+        confirmMessage = `⚠️ WAARSCHUWING: Dit verwijdert alle items in de prullenbak PERMANENT!\n\nDeze actie kan NIET ongedaan worden gemaakt.\n\nWeet je zeker dat je door wilt gaan?`;
+      }
+      
+      if (confirm(confirmMessage)) {
         executeAdminAction(pendingAdminAction);
       } else {
         pendingAdminAction = null;
@@ -914,7 +947,7 @@
     console.log('[executeAdminAction] Processing action:', actionToExecute);
 
     const targetBtn = actionToExecute.type === 'bulk' 
-      ? (actionToExecute.action === 'deleteClosed' ? deleteClosedBtn : deleteAllBtn)
+      ? deleteTabItemsBtn
       : actionToExecute.type === 'deleteItem' 
         ? document.querySelector(`.delete-btn[data-id="${actionToExecute.id}"]`)
         : null;
@@ -926,16 +959,26 @@
     try {
       if (actionToExecute.type === 'bulk') {
         console.log('[executeAdminAction] Bulk action:', actionToExecute.action);
-        const endpoint = actionToExecute.action === 'deleteClosed' 
-          ? '?action=deleteClosed' 
-          : '?action=deleteAll';
+        let endpoint;
+        if (actionToExecute.action === 'deleteOpen') {
+          endpoint = '?action=bulk&bulkAction=deleteOpen';
+        } else if (actionToExecute.action === 'deleteClosed') {
+          endpoint = '?action=bulk&bulkAction=deleteClosed';
+        } else if (actionToExecute.action === 'deleteAll') {
+          endpoint = '?action=bulk&bulkAction=deleteAll';
+        } else if (actionToExecute.action === 'permanentDelete') {
+          endpoint = '?action=bulk&bulkAction=permanentDelete';
+        }
         
         console.log('[executeAdminAction] Calling API with endpoint:', endpoint);
         await apiRequest(endpoint, {
           body: { adminCode }
         });
         
-        showMessage(listMessage, 'Items verwijderd', 'success');
+        const successMessage = actionToExecute.action === 'permanentDelete' 
+          ? 'Prullenbak geleegd' 
+          : 'Items verwijderd';
+        showMessage(listMessage, successMessage, 'success');
         
         // Clear all caches after bulk operations
         cache.clear();

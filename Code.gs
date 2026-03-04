@@ -190,16 +190,27 @@ function handleSetStatus(e) {
     if (allData[i][COLUMNS.id] === data.id) {
       const rowNum = i + 1;
       
-      sheet.getRange(rowNum, COLUMNS.updatedAt + 1).setValue(now);
-      sheet.getRange(rowNum, COLUMNS.status + 1).setValue(data.status);
-      sheet.getRange(rowNum, COLUMNS.ip + 1).setValue(ip);
-      sheet.getRange(rowNum, COLUMNS.userAgent + 1).setValue(userAgent);
+      // Batch update: prepare all values and update in ONE call
+      const updates = [
+        [COLUMNS.updatedAt + 1, now],
+        [COLUMNS.status + 1, data.status],
+        [COLUMNS.ip + 1, ip],
+        [COLUMNS.userAgent + 1, userAgent]
+      ];
       
       if (data.status === 'closed') {
-        sheet.getRange(rowNum, COLUMNS.closedAt + 1).setValue(now);
+        updates.push([COLUMNS.closedAt + 1, now]);
       } else if (data.status === 'deleted') {
-        sheet.getRange(rowNum, COLUMNS.deletedAt + 1).setValue(now);
+        updates.push([COLUMNS.deletedAt + 1, now]);
       }
+      
+      // Single batch write instead of 4-5 separate writes
+      updates.forEach(([col, val]) => {
+        allData[i][col - 1] = val;
+      });
+      
+      // Write the entire row back in one operation
+      sheet.getRange(rowNum, 1, 1, allData[i].length).setValues([allData[i]]);
       
       return { ok: true };
     }
@@ -211,15 +222,15 @@ function handleSetStatus(e) {
 function handleBulk(e) {
   const data = e.parameter;
   
-  if (!data.action || !data.adminCode) {
-    return { ok: false, error: 'Action and admin code are required' };
+  if (!data.bulkAction || !data.adminCode) {
+    return { ok: false, error: 'Bulk action and admin code are required' };
   }
   
   if (data.adminCode !== ADMIN_CODE) {
     return { ok: false, error: 'Invalid admin code' };
   }
   
-  if (!['deleteClosed', 'deleteAll'].includes(data.action)) {
+  if (!['deleteOpen', 'deleteClosed', 'deleteAll', 'permanentDelete'].includes(data.bulkAction)) {
     return { ok: false, error: 'Invalid action' };
   }
   
@@ -228,23 +239,54 @@ function handleBulk(e) {
   const now = new Date().toISOString();
   let affected = 0;
   
+  // Handle permanent deletion differently - actually remove rows
+  if (data.bulkAction === 'permanentDelete') {
+    const rowsToDelete = [];
+    
+    // Find all rows with deleted status (iterate backwards to collect row numbers)
+    for (let i = allData.length - 1; i >= 1; i--) {
+      if (allData[i][COLUMNS.status] === 'deleted') {
+        rowsToDelete.push(i + 1); // +1 because sheet rows are 1-indexed
+        affected++;
+      }
+    }
+    
+    // Delete rows one by one (from bottom to top to maintain row numbers)
+    rowsToDelete.forEach(rowNum => {
+      sheet.deleteRow(rowNum);
+    });
+    
+    return { ok: true, affected };
+  }
+  
+  // For soft deletes (deleteOpen, deleteClosed, deleteAll), mark as deleted
+  const rowsToUpdate = [];
+  
   for (let i = 1; i < allData.length; i++) {
     const status = allData[i][COLUMNS.status];
-    const rowNum = i + 1;
     let shouldDelete = false;
     
-    if (data.action === 'deleteClosed' && status === 'closed') {
+    if (data.bulkAction === 'deleteOpen' && status === 'open') {
       shouldDelete = true;
-    } else if (data.action === 'deleteAll' && (status === 'open' || status === 'closed')) {
+    } else if (data.bulkAction === 'deleteClosed' && status === 'closed') {
+      shouldDelete = true;
+    } else if (data.bulkAction === 'deleteAll' && (status === 'open' || status === 'closed')) {
       shouldDelete = true;
     }
     
     if (shouldDelete) {
-      sheet.getRange(rowNum, COLUMNS.updatedAt + 1).setValue(now);
-      sheet.getRange(rowNum, COLUMNS.deletedAt + 1).setValue(now);
-      sheet.getRange(rowNum, COLUMNS.status + 1).setValue('deleted');
+      allData[i][COLUMNS.updatedAt] = now;
+      allData[i][COLUMNS.deletedAt] = now;
+      allData[i][COLUMNS.status] = 'deleted';
+      rowsToUpdate.push(i);
       affected++;
     }
+  }
+  
+  // Batch write: update all modified rows in ONE operation
+  if (rowsToUpdate.length > 0) {
+    // Write back the entire data range in a single call
+    sheet.getRange(2, 1, allData.length - 1, allData[0].length).setValues(allData.slice(1));
   }
   
   return { ok: true, affected };
