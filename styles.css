@@ -76,6 +76,12 @@ h1, h2, h3, h4, h5, h6 {
   font-weight: 600;
 }
 
+.form-section {
+  position: sticky;
+  top: 2rem;
+  z-index: 1;
+}
+
 .form-section,
 .list-section {
   background: var(--card-bg);
