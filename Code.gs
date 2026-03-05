@@ -61,6 +61,12 @@ function handleRequest(e) {
       case 'setStatus':
         result = handleSetStatus(e);
         break;
+      case 'addToArchive':
+        result = handleAddToArchive(e);
+        break;
+      case 'migrateClosedToArchive':
+        result = handleMigrateClosedToArchive(e);
+        break;
       case 'bulk':
         result = handleBulk(e);
         break;
@@ -129,10 +135,39 @@ function handleAdd(e) {
     return { ok: false, error: 'Invalid AH URL' };
   }
   
+  // Validate quantity
+  const quantity = parseInt(data.quantity) || 1;
+  if (quantity < 1) {
+    return { ok: false, error: 'Quantity must be at least 1' };
+  }
+  if (quantity > 10) {
+    return { ok: false, error: 'Quantity must be at most 10' };
+  }
+  
   const sheet = getSheet();
+  const allData = sheet.getDataRange().getValues();
   const now = new Date().toISOString();
   const id = generateId();
   const { ip, userAgent } = getClientInfo(e);
+  
+  // Check for duplicates
+  for (let i = 1; i < allData.length; i++) {
+    const row = allData[i];
+    const status = row[COLUMNS.status];
+    
+    // Skip deleted items from duplicate check
+    if (status === 'deleted') continue;
+    
+    // Check duplicate by AH URL (if provided)
+    if (data.ahUrl && row[COLUMNS.ahUrl] === data.ahUrl) {
+      return { ok: false, error: 'Dit product is al toegevoegd (zelfde AH link)' };
+    }
+    
+    // Check duplicate by product name (case-insensitive)
+    if (row[COLUMNS.item] && row[COLUMNS.item].toLowerCase() === data.item.toLowerCase()) {
+      return { ok: false, error: 'Dit product is al toegevoegd (zelfde productnaam)' };
+    }
+  }
   
   const row = [
     id,
@@ -144,7 +179,7 @@ function handleAdd(e) {
     userAgent,
     data.name,
     data.item,
-    data.quantity || '',
+    quantity,
     data.substituteFor || '',
     data.imageUrl || '',
     data.ahUrl || '',
@@ -190,7 +225,7 @@ function handleSetStatus(e) {
     return { ok: false, error: 'ID and status are required' };
   }
   
-  if (!['open', 'closed', 'deleted'].includes(data.status)) {
+  if (!['open', 'closed', 'archive', 'deleted'].includes(data.status)) {
     return { ok: false, error: 'Invalid status' };
   }
   
@@ -247,7 +282,7 @@ function handleBulk(e) {
     return { ok: false, error: 'Invalid admin code' };
   }
   
-  if (!['deleteOpen', 'deleteClosed', 'deleteAll', 'permanentDelete'].includes(data.bulkAction)) {
+  if (!['deleteOpen', 'deleteClosed', 'deleteArchive', 'deleteAll', 'permanentDelete'].includes(data.bulkAction)) {
     return { ok: false, error: 'Invalid action' };
   }
   
@@ -286,6 +321,8 @@ function handleBulk(e) {
     if (data.bulkAction === 'deleteOpen' && status === 'open') {
       shouldDelete = true;
     } else if (data.bulkAction === 'deleteClosed' && status === 'closed') {
+      shouldDelete = true;
+    } else if (data.bulkAction === 'deleteArchive' && status === 'archive') {
       shouldDelete = true;
     } else if (data.bulkAction === 'deleteAll' && (status === 'open' || status === 'closed')) {
       shouldDelete = true;
@@ -332,6 +369,107 @@ function isValidUrl(string) {
   // Simple check: just verify it starts with http:// or https://
   const trimmed = string.trim();
   return trimmed.startsWith('http://') || trimmed.startsWith('https://');
+}
+
+function handleAddToArchive(e) {
+  const data = e.parameter;
+  
+  if (!data.id || !data.item) {
+    return { ok: false, error: 'ID and item are required' };
+  }
+  
+  const sheet = getSheet();
+  const allData = sheet.getDataRange().getValues();
+  const now = new Date().toISOString();
+  
+  // Check if item already exists in archive (by item name)
+  for (let i = 1; i < allData.length; i++) {
+    const row = allData[i];
+    if (row[COLUMNS.status] === 'archive' && row[COLUMNS.item] === data.item) {
+      return { ok: true, message: 'Item already in archive' };
+    }
+  }
+  
+  // Add new archive item
+  const archiveRow = [
+    data.id || generateId(),
+    data.createdAt || now,
+    now, // updatedAt
+    data.closedAt || now,
+    null, // deletedAt
+    data.ip || 'unknown',
+    data.userAgent || 'unknown',
+    data.name || '',
+    data.item,
+    data.quantity || 1,
+    data.substituteFor || '',
+    data.imageUrl || '',
+    data.ahUrl || '',
+    'archive'
+  ];
+  
+  sheet.appendRow(archiveRow);
+  
+  return { ok: true, message: 'Item added to archive' };
+}
+
+function handleMigrateClosedToArchive(e) {
+  const sheet = getSheet();
+  const allData = sheet.getDataRange().getValues();
+  const now = new Date().toISOString();
+  let migratedCount = 0;
+  
+  // Find all closed items
+  const closedItems = [];
+  for (let i = 1; i < allData.length; i++) {
+    const row = allData[i];
+    if (row[COLUMNS.status] === 'closed') {
+      closedItems.push({
+        item: row[COLUMNS.item],
+        imageUrl: row[COLUMNS.imageUrl],
+        ahUrl: row[COLUMNS.ahUrl],
+        ip: row[COLUMNS.ip],
+        userAgent: row[COLUMNS.userAgent]
+      });
+    }
+  }
+  
+  // Check which items don't exist in archive yet
+  const existingArchiveItems = new Set();
+  for (let i = 1; i < allData.length; i++) {
+    const row = allData[i];
+    if (row[COLUMNS.status] === 'archive') {
+      existingArchiveItems.add(row[COLUMNS.item]);
+    }
+  }
+  
+  // Add closed items to archive if they don't exist
+  for (const item of closedItems) {
+    if (!existingArchiveItems.has(item.item)) {
+      const archiveRow = [
+        generateId(),
+        now, // createdAt
+        now, // updatedAt
+        now, // closedAt
+        null, // deletedAt
+        item.ip || 'unknown',
+        item.userAgent || 'unknown',
+        '', // name (empty for archive)
+        item.item,
+        1, // quantity
+        '', // substituteFor (empty for archive)
+        item.imageUrl || '',
+        item.ahUrl || '',
+        'archive'
+      ];
+      
+      sheet.appendRow(archiveRow);
+      existingArchiveItems.add(item.item);
+      migratedCount++;
+    }
+  }
+  
+  return { ok: true, migrated: migratedCount, message: `Migrated ${migratedCount} items to archive` };
 }
 
 function setupSheet() {

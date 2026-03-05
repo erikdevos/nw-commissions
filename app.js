@@ -5,7 +5,7 @@ function groceryApp() {
     API_BASE_URL: typeof CONFIG !== 'undefined' ? CONFIG.API_BASE_URL : '',
     
     // State
-    currentStatus: 'open',
+    currentStatus: 'archive',
     loading: false,
     formLoading: false,
     bulkLoading: false,
@@ -15,6 +15,7 @@ function groceryApp() {
     items: {
       open: [],
       closed: [],
+      archive: [],
       deleted: []
     },
     
@@ -55,9 +56,14 @@ function groceryApp() {
       return this.items[this.currentStatus] || [];
     },
     
+    get isAdmin() {
+      return !!this.adminCode;
+    },
+    
     get deleteButtonText() {
       if (this.currentStatus === 'open') return 'Verwijder alle verzoeken';
       if (this.currentStatus === 'closed') return 'Verwijder bestelde items';
+      if (this.currentStatus === 'archive') return 'Verwijder archief';
       if (this.currentStatus === 'deleted') return 'Prullenbak legen';
       return 'Verwijder items';
     },
@@ -69,6 +75,9 @@ function groceryApp() {
       
       // Load stored admin code
       this.adminCode = this.getStoredAdminCode();
+      
+      // Run one-time migration to populate archive
+      this.migrateClosedToArchive();
       
       // Load initial items
       this.loadItems();
@@ -186,20 +195,23 @@ function groceryApp() {
     async loadItems() {
       console.log('[loadItems] Loading items for status:', this.currentStatus);
       
+      this.loading = true;
+      
       // Check cache first
-      const cached = this.getCachedItems(this.currentStatus);
-      if (cached) {
-        this.items[this.currentStatus] = cached;
+      const cachedItems = this.getCachedItems(this.currentStatus);
+      if (cachedItems) {
+        console.log('[loadItems] Using cached items for', this.currentStatus, ':', cachedItems.length, 'items');
+        this.items[this.currentStatus] = cachedItems;
+        this.loading = false;
         return;
       }
       
-      this.loading = true;
-      
       try {
+        console.log('[loadItems] No cache found, fetching from API for', this.currentStatus);
         const data = await this.apiRequest(`?action=list&status=${this.currentStatus}`);
         this.items[this.currentStatus] = data.items || [];
         this.setCachedItems(this.currentStatus, this.items[this.currentStatus]);
-        console.log('[loadItems] Loaded', this.items[this.currentStatus].length, 'items');
+        console.log('[loadItems] Loaded', this.items[this.currentStatus].length, 'items for', this.currentStatus);
       } catch (error) {
         console.error('[loadItems] Error:', error);
         this.showNotification(error.message, 'error');
@@ -240,7 +252,7 @@ function groceryApp() {
     },
     
     async preloadTabs() {
-      const statuses = ['open', 'closed', 'deleted'].filter(s => s !== this.currentStatus);
+      const statuses = ['open', 'closed', 'archive', 'deleted'].filter(s => s !== this.currentStatus);
       
       for (const status of statuses) {
         if (!this.getCachedItems(status)) {
@@ -260,6 +272,7 @@ function groceryApp() {
     switchTab(status) {
       console.log('[switchTab] Switching to:', status);
       this.currentStatus = status;
+      console.log('[switchTab] Current status set, calling loadItems...');
       this.loadItems();
     },
     
@@ -271,11 +284,47 @@ function groceryApp() {
       this.formMessage = { text: '', type: '' };
       
       try {
+        // Validate quantity
+        const quantity = parseInt(this.form.quantity) || 1;
+        if (quantity < 1) {
+          this.formMessage = { text: 'Hoeveelheid moet minimaal 1 zijn', type: 'error' };
+          this.formLoading = false;
+          return;
+        }
+        if (quantity > 10) {
+          this.formMessage = { text: 'Hoeveelheid mag maximaal 10 zijn', type: 'error' };
+          this.formLoading = false;
+          return;
+        }
+        
+        // Check for duplicates in frontend (for immediate feedback)
+        const allItems = [...this.items.open, ...this.items.closed];
+        
+        // Check duplicate by AH URL
+        if (this.form.ahUrl) {
+          const urlDuplicate = allItems.find(item => item.ahUrl === this.form.ahUrl);
+          if (urlDuplicate) {
+            this.formMessage = { text: 'Dit product is al toegevoegd (zelfde AH link)', type: 'error' };
+            this.formLoading = false;
+            return;
+          }
+        }
+        
+        // Check duplicate by product name (case-insensitive)
+        const nameDuplicate = allItems.find(item => 
+          item.item && item.item.toLowerCase() === this.form.item.toLowerCase()
+        );
+        if (nameDuplicate) {
+          this.formMessage = { text: 'Dit product is al toegevoegd (zelfde productnaam)', type: 'error' };
+          this.formLoading = false;
+          return;
+        }
+        
         const formData = {
           ahUrl: this.form.ahUrl,
           item: this.form.item,
           imageUrl: this.form.imageUrl,
-          quantity: this.form.quantity || 1,
+          quantity: quantity,
           substituteFor: this.form.substituteFor,
           name: this.form.name
         };
@@ -309,6 +358,99 @@ function groceryApp() {
     },
     
     // Item Actions
+    async migrateClosedToArchive() {
+      console.log('[migrateClosedToArchive] Starting migration...');
+      
+      try {
+        const data = await this.apiRequest('?action=migrateClosedToArchive');
+        console.log('[migrateClosedToArchive] Migration complete:', data);
+        
+        if (data.migrated > 0) {
+          // Invalidate archive cache to force reload
+          this.invalidateCache('archive');
+          console.log(`[migrateClosedToArchive] Migrated ${data.migrated} items to archive`);
+        }
+      } catch (error) {
+        console.error('[migrateClosedToArchive] Error:', error);
+        // Don't show error notification - this is a background operation
+      }
+    },
+    
+    async addArchiveItemToList(item) {
+      console.log('[addArchiveItemToList] Adding archive item to list:', item);
+      
+      this.formLoading = true;
+      
+      try {
+        const formData = {
+          ahUrl: item.ahUrl || '',
+          item: item.item,
+          imageUrl: item.imageUrl || '',
+          quantity: 1,
+          substituteFor: '',
+          name: ''
+        };
+        
+        await this.apiRequest('?action=add', { params: formData });
+        
+        this.showNotification('Product toegevoegd aan verzoeken!', 'success');
+        
+        // Invalidate cache and reload
+        this.invalidateCache('open');
+        if (this.currentStatus === 'open') {
+          await this.loadItems();
+        }
+        
+      } catch (error) {
+        console.error('[addArchiveItemToList] Error:', error);
+        this.showNotification(error.message, 'error');
+      } finally {
+        this.formLoading = false;
+      }
+    },
+    
+    async addItemToArchive(id) {
+      console.log('[addItemToArchive] Adding item to archive:', id);
+      
+      try {
+        // Get the current item data
+        const item = this.items.closed.find(item => item.id === id);
+        if (!item) {
+          console.error('[addItemToArchive] Item not found in closed items');
+          return;
+        }
+        
+        // Create archive version of the item (without date/name metadata)
+        const archiveItem = {
+          id: Date.now().toString(36) + '-' + Math.random().toString(36).substring(2, 8), // Generate new unique ID
+          item: item.item,
+          imageUrl: item.imageUrl || '',
+          ahUrl: item.ahUrl || '',
+          status: 'archive',
+          createdAt: new Date().toISOString(), // New creation time for archive
+          updatedAt: new Date().toISOString(),
+          closedAt: new Date().toISOString(),
+          deletedAt: null,
+          ip: item.ip,
+          userAgent: item.userAgent,
+          name: '', // Remove name for archive
+          quantity: 1, // Reset to default quantity
+          substituteFor: '' // Remove substitute for archive
+        };
+        
+        // Add to archive via API
+        await this.apiRequest('?action=addToArchive', {
+          params: archiveItem
+        });
+        
+        console.log('[addItemToArchive] Successfully added to archive');
+        
+      } catch (error) {
+        console.error('[addItemToArchive] Error:', error);
+        // Don't show error notification since this is background operation
+      }
+    },
+    
     async setItemStatus(id, status, buttonEl) {
       console.log('[setItemStatus] Setting item', id, 'to', status);
       
@@ -331,11 +473,29 @@ function groceryApp() {
           }
         });
         
-        // Invalidate all caches
+        // If item was marked as closed (ordered), also add it to archive
+        if (status === 'closed') {
+          console.log('[setItemStatus] Adding ordered item to archive...');
+          await this.addItemToArchive(id);
+          
+          // Force reload archive data if user is on archive tab
+          if (this.currentStatus === 'archive') {
+            console.log('[setItemStatus] User is on archive tab, reloading archive...');
+            this.invalidateCache('archive');
+            const data = await this.apiRequest(`?action=list&status=archive`);
+            console.log('[setItemStatus] Archive data loaded:', data);
+            this.items.archive = data.items || [];
+            this.setCachedItems('archive', this.items.archive);
+            console.log('[setItemStatus] Archive items updated:', this.items.archive);
+          }
+        }
+        
+        // Invalidate other caches
         this.invalidateCache('open');
         this.invalidateCache('closed');
         this.invalidateCache('deleted');
         
+        // Load current tab items
         await this.loadItems();
       } catch (error) {
         console.error('[setItemStatus] Error:', error);
@@ -368,6 +528,7 @@ function groceryApp() {
       let action;
       if (this.currentStatus === 'open') action = 'deleteOpen';
       else if (this.currentStatus === 'closed') action = 'deleteClosed';
+      else if (this.currentStatus === 'archive') action = 'deleteArchive';
       else if (this.currentStatus === 'deleted') action = 'permanentDelete';
       
       const storedCode = this.getStoredAdminCode();
@@ -379,6 +540,8 @@ function groceryApp() {
           confirmMessage = 'Weet je zeker dat je alle open items wilt verwijderen?\n\nDeze items worden verplaatst naar de prullenbak.';
         } else if (action === 'deleteClosed') {
           confirmMessage = 'Weet je zeker dat je alle bestelde items wilt verwijderen?\n\nDeze items worden verplaatst naar de prullenbak.';
+        } else if (action === 'deleteArchive') {
+          confirmMessage = 'Weet je zeker dat je alle archief items wilt verwijderen?\n\nDeze items worden verplaatst naar de prullenbak.';
         } else if (action === 'permanentDelete') {
           confirmMessage = '⚠️ WAARSCHUWING: Dit verwijdert alle items in de prullenbak PERMANENT!\n\nDeze actie kan NIET ongedaan worden gemaakt.\n\nWeet je zeker dat je door wilt gaan?';
         }
@@ -471,6 +634,17 @@ function groceryApp() {
       this.showAdminModal = false;
       this.adminCodeInput = '';
       this.pendingAdminAction = null;
+    },
+    
+    logoutAdmin() {
+      this.adminCode = null;
+      localStorage.removeItem(this.ADMIN_CODE_STORAGE_KEY);
+      this.showNotification('Uitgelogd als admin', 'success');
+      
+      // If on deleted tab, switch to archive tab
+      if (this.currentStatus === 'deleted') {
+        this.switchTab('archive');
+      }
     },
     
     async confirmAdminAction() {

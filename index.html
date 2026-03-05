@@ -25,6 +25,9 @@
   <div class="container">
     <header>
       <img src="resource/logo_nexwork_conclusion.svg" alt="Nexwork logo" class="logo">
+      <button @click="isAdmin ? logoutAdmin() : openAdminModal()" class="btn btn-sm admin-btn" :class="{'btn-danger': isAdmin, 'btn-secondary': !isAdmin}">
+        <span x-text="isAdmin ? 'Uitloggen' : 'Admin'"></span>
+      </button>
     </header>
 
     <div class="main-content">
@@ -50,7 +53,7 @@
 
           <div class="form-group">
             <label for="quantity">Hoeveelheid</label>
-            <input type="number" id="quantity" x-model="form.quantity" min="1" max="10" placeholder="1">
+            <input type="number" id="quantity" x-model="form.quantity" min="1" max="10" placeholder="1" @input="form.quantity = Math.max(1, Math.min(10, parseInt(form.quantity) || 1))">
           </div>
 
           <div class="form-group">
@@ -77,26 +80,42 @@
       </section>
 
       <section class="list-section">
+        <h2>Boodschappenlijst</h2>
+        
         <div class="list-header">
-          <h2>Boodschappenlijst</h2>
           <div class="header-controls">
             <div class="tabs" role="tablist" aria-label="Product status">
+              <button @click="switchTab('archive')" :class="{'tab': true, 'active': currentStatus === 'archive'}" role="tab" :aria-selected="currentStatus === 'archive'" aria-controls="archive-panel" id="archive-tab">Shop</button>
               <button @click="switchTab('open')" :class="{'tab': true, 'active': currentStatus === 'open'}" role="tab" :aria-selected="currentStatus === 'open'" aria-controls="open-panel" id="open-tab">Verzoeken</button>
               <button @click="switchTab('closed')" :class="{'tab': true, 'active': currentStatus === 'closed'}" role="tab" :aria-selected="currentStatus === 'closed'" aria-controls="closed-panel" id="closed-tab">Besteld</button>
-              <button @click="switchTab('deleted')" :class="{'tab': true, 'active': currentStatus === 'deleted'}" role="tab" :aria-selected="currentStatus === 'deleted'" aria-controls="deleted-panel" id="deleted-tab">Verwijderd</button>
+              <button x-show="isAdmin" @click="switchTab('deleted')" :class="{'tab': true, 'active': currentStatus === 'deleted'}" role="tab" :aria-selected="currentStatus === 'deleted'" aria-controls="deleted-panel" id="deleted-tab">Verwijderd</button>
             </div>
 
           </div>
         </div>
 
-        <div class="items-list" role="tabpanel" :aria-labelledby="currentStatus + '-tab'" :id="currentStatus + '-panel'">
-          <div x-show="loading" class="loading">
-            <div class="spinner"></div>
-            <p>Lijst ophalen...</p>
-          </div>
-          
-          <p x-show="!loading && currentItems.length === 0" class="empty-state">Geen items gevonden</p>
-          
+        <div x-show="loading" class="loading">
+          <div class="spinner"></div>
+          <p>Lijst ophalen...</p>
+        </div>
+        
+        <p x-show="!loading && currentItems.length === 0" class="empty-state">Geen items gevonden</p>
+        
+        <!-- Archive Grid Layout -->
+        <div x-show="!loading && currentStatus === 'archive'" class="items-grid" role="tabpanel" aria-labelledby="archive-tab" id="archive-panel">
+          <template x-for="item in currentItems" :key="item.id">
+            <div class="archive-card">
+              <img :src="item.imageUrl" :alt="item.item" class="archive-image" @error="$el.style.display='none'">
+              <div class="archive-name" x-text="item.item"></div>
+              <button @click="addArchiveItemToList(item)" class="btn btn-primary archive-add-btn" :disabled="formLoading">
+                <span class="btn-text">+ Toevoegen</span>
+              </button>
+            </div>
+          </template>
+        </div>
+        
+        <!-- Regular List Layout -->
+        <div x-show="!loading && currentStatus !== 'archive'" class="items-list" role="tabpanel" :aria-labelledby="currentStatus + '-tab'" :id="currentStatus + '-panel'">
           <template x-for="item in currentItems" :key="item.id">
             <div class="item-card" :class="item.status">
               <div class="item-image-container">
@@ -121,9 +140,9 @@
                 </div>
                 <div class="item-meta" x-text="'Aangevraagd door ' + item.name + ' • ' + formatDate(item.createdAt)"></div>
               </div>
-              <div class="item-actions">
+              <div class="item-actions" x-show="isAdmin">
                 <template x-if="item.status === 'open'">
-                  <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                  <div class="item-action-group">
                     <button @click="setItemStatus(item.id, 'closed', $el)" class="btn btn-sm btn-secondary" :class="{'loading': $el.classList.contains('loading')}">
                       <span class="btn-text">Besteld?</span>
                       <span class="btn-loader">Bezig...</span>
@@ -135,7 +154,7 @@
                   </div>
                 </template>
                 <template x-if="item.status === 'closed'">
-                  <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+                  <div class="item-action-group">
                     <button @click="setItemStatus(item.id, 'open', $el)" class="btn btn-sm btn-primary" :class="{'loading': $el.classList.contains('loading')}">
                       <span class="btn-text">Toevoegen</span>
                       <span class="btn-loader">Bezig...</span>
@@ -159,7 +178,7 @@
 
         <div class="actions-bar">
           <div class="bulk-actions">
-            <button @click="handleDeleteTabItems" class="btn btn-danger" :class="{'loading': bulkLoading}" :disabled="bulkLoading">
+            <button x-show="isAdmin" @click="handleDeleteTabItems" class="btn btn-danger" :class="{'loading': bulkLoading}" :disabled="bulkLoading">
               <span class="btn-text" x-text="deleteButtonText"></span>
               <span class="btn-loader">Verwijderen...</span>
             </button>
