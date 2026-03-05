@@ -277,6 +277,36 @@ function groceryApp() {
     },
     
     // Form Handling
+    extractProductNameFromUrl() {
+      if (!this.form.ahUrl) return;
+      
+      try {
+        const url = new URL(this.form.ahUrl);
+        const pathParts = url.pathname.split('/');
+        
+        // AH URLs typically have format: /producten/product/wi123456/product-name
+        // Find the product name part (last segment)
+        const productNameSlug = pathParts[pathParts.length - 1];
+        
+        if (productNameSlug && productNameSlug !== 'product' && productNameSlug !== 'producten') {
+          // Convert slug to readable name: "melk-halfvol-1l" -> "Melk halfvol 1l"
+          const productName = productNameSlug
+            .split('-')
+            .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+            .join(' ');
+          
+          // Only auto-fill if the item field is empty
+          if (!this.form.item || this.form.item.trim() === '') {
+            this.form.item = productName;
+            console.log('[extractProductNameFromUrl] Auto-filled product name:', productName);
+          }
+        }
+      } catch (error) {
+        console.error('[extractProductNameFromUrl] Error parsing URL:', error);
+        // Silently fail - invalid URL format
+      }
+    },
+    
     async handleSubmit() {
       console.log('[handleSubmit] Submitting form');
       
@@ -286,24 +316,31 @@ function groceryApp() {
       try {
         // Validate quantity
         const quantity = parseInt(this.form.quantity) || 1;
+        console.log('[handleSubmit] Quantity:', quantity);
         if (quantity < 1) {
+          console.log('[handleSubmit] Quantity too low');
           this.formMessage = { text: 'Hoeveelheid moet minimaal 1 zijn', type: 'error' };
           this.formLoading = false;
           return;
         }
         if (quantity > 10) {
+          console.log('[handleSubmit] Quantity too high');
           this.formMessage = { text: 'Hoeveelheid mag maximaal 10 zijn', type: 'error' };
           this.formLoading = false;
           return;
         }
         
         // Check for duplicates in frontend (for immediate feedback)
-        const allItems = [...this.items.open, ...this.items.closed];
+        const openItems = this.items.open || [];
+        const closedItems = this.items.closed || [];
+        const allItems = [...openItems, ...closedItems];
+        console.log('[handleSubmit] Checking duplicates in', allItems.length, 'items');
         
         // Check duplicate by AH URL
-        if (this.form.ahUrl) {
+        if (this.form.ahUrl && allItems.length > 0) {
           const urlDuplicate = allItems.find(item => item.ahUrl === this.form.ahUrl);
           if (urlDuplicate) {
+            console.log('[handleSubmit] Duplicate URL found:', urlDuplicate);
             this.formMessage = { text: 'Dit product is al toegevoegd (zelfde AH link)', type: 'error' };
             this.formLoading = false;
             return;
@@ -311,15 +348,19 @@ function groceryApp() {
         }
         
         // Check duplicate by product name (case-insensitive)
-        const nameDuplicate = allItems.find(item => 
-          item.item && item.item.toLowerCase() === this.form.item.toLowerCase()
-        );
-        if (nameDuplicate) {
-          this.formMessage = { text: 'Dit product is al toegevoegd (zelfde productnaam)', type: 'error' };
-          this.formLoading = false;
-          return;
+        if (allItems.length > 0) {
+          const nameDuplicate = allItems.find(item => 
+            item.item && item.item.toLowerCase() === this.form.item.toLowerCase()
+          );
+          if (nameDuplicate) {
+            console.log('[handleSubmit] Duplicate name found:', nameDuplicate);
+            this.formMessage = { text: 'Dit product is al toegevoegd (zelfde productnaam)', type: 'error' };
+            this.formLoading = false;
+            return;
+          }
         }
         
+        console.log('[handleSubmit] Validation passed, preparing form data');
         const formData = {
           ahUrl: this.form.ahUrl,
           item: this.form.item,
@@ -329,6 +370,7 @@ function groceryApp() {
           name: this.form.name
         };
         
+        console.log('[handleSubmit] Calling API with:', formData);
         await this.apiRequest('?action=add', { params: formData });
         
         this.showNotification('Product toegevoegd!', 'success');
@@ -495,6 +537,16 @@ function groceryApp() {
         this.invalidateCache('closed');
         this.invalidateCache('deleted');
         
+        // If we're deleting from archive, invalidate and reload archive cache
+        if (this.currentStatus === 'archive') {
+          console.log('[setItemStatus] Deleting from archive, reloading archive...');
+          this.invalidateCache('archive');
+          const data = await this.apiRequest(`?action=list&status=archive`);
+          this.items.archive = data.items || [];
+          this.setCachedItems('archive', this.items.archive);
+          console.log('[setItemStatus] Archive reloaded after delete:', this.items.archive);
+        }
+        
         // Load current tab items
         await this.loadItems();
       } catch (error) {
@@ -652,20 +704,35 @@ function groceryApp() {
       
       if (!code) return;
       
-      this.adminCode = code;
-      this.storeAdminCode(code);
-      
       const actionToExecute = this.pendingAdminAction;
       this.closeAdminModal();
       
-      if (!actionToExecute) return;
-      
-      if (actionToExecute.type === 'bulk') {
-        await this.executeBulkAction(actionToExecute.action);
-      } else if (actionToExecute.type === 'deleteItem') {
-        await this.setItemStatus(actionToExecute.id, 'deleted');
-      } else if (actionToExecute.type === 'setStatus') {
-        await this.setItemStatus(actionToExecute.id, actionToExecute.status);
+      try {
+        // Validate admin code using dedicated endpoint
+        await this.apiRequest('?action=validateAdmin', { 
+          params: { adminCode: code } 
+        });
+        
+        // If successful, set the admin code
+        this.adminCode = code;
+        this.storeAdminCode(code);
+        this.showNotification('Admin login succesvol', 'success');
+        
+        // Execute the pending action
+        if (!actionToExecute) return;
+        
+        if (actionToExecute.type === 'bulk') {
+          await this.executeBulkAction(actionToExecute.action);
+        } else if (actionToExecute.type === 'deleteItem') {
+          await this.setItemStatus(actionToExecute.id, 'deleted');
+        } else if (actionToExecute.type === 'setStatus') {
+          await this.setItemStatus(actionToExecute.id, actionToExecute.status);
+        }
+        
+      } catch (error) {
+        console.error('[confirmAdminAction] Admin validation failed:', error);
+        this.showNotification('Ongeldige admin code', 'error');
+        // Don't set admin code on failed validation
       }
     },
     

@@ -38,7 +38,7 @@
             <legend class="visually-hidden">Product toevoegen aan boodschappenlijst</legend>
           <div class="form-group">
             <label for="ahUrl">AH Link *</label>
-            <input type="url" id="ahUrl" x-model="form.ahUrl" required placeholder="https://www.ah.nl/producten/product/...">
+            <input type="url" id="ahUrl" x-model="form.ahUrl" @blur="extractProductNameFromUrl" required placeholder="https://www.ah.nl/producten/product/...">
           </div>
 
           <div class="form-group">
@@ -65,6 +65,8 @@
             <label for="name">Jouw naam *</label>
             <input type="text" id="name" x-model="form.name" required placeholder="Jouw naam">
           </div>
+
+          <div x-show="formMessage.text" :class="'message ' + formMessage.type" x-text="formMessage.text"></div>
 
           <div class="form-buttons">
             <button type="submit" class="btn btn-primary" :disabled="formLoading" :class="{'loading': formLoading}">
@@ -107,9 +109,15 @@
             <div class="archive-card">
               <img :src="item.imageUrl" :alt="item.item" class="archive-image" @error="$el.style.display='none'">
               <div class="archive-name" x-text="item.item"></div>
-              <button @click="addArchiveItemToList(item)" class="btn btn-primary archive-add-btn" :disabled="formLoading">
-                <span class="btn-text">+ Toevoegen</span>
-              </button>
+              <div class="archive-actions">
+                <button @click="addArchiveItemToList(item)" class="btn btn-primary archive-add-btn" :disabled="formLoading">
+                  <span class="btn-text">+ Toevoegen</span>
+                </button>
+                <button x-show="isAdmin" @click="deleteItem(item.id, $el)" class="btn btn-danger archive-delete-btn" :class="{'loading': $el.classList.contains('loading')}" :disabled="formLoading">
+                  <span class="btn-text">Verwijderen</span>
+                  <span class="btn-loader">Bezig...</span>
+                </button>
+              </div>
             </div>
           </template>
         </div>

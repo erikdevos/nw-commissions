@@ -67,6 +67,9 @@ function handleRequest(e) {
       case 'migrateClosedToArchive':
         result = handleMigrateClosedToArchive(e);
         break;
+      case 'validateAdmin':
+        result = handleValidateAdmin(e);
+        break;
       case 'bulk':
         result = handleBulk(e);
         break;
@@ -470,6 +473,20 @@ function handleMigrateClosedToArchive(e) {
   }
   
   return { ok: true, migrated: migratedCount, message: `Migrated ${migratedCount} items to archive` };
+}
+
+function handleValidateAdmin(e) {
+  const data = e.parameter;
+  
+  if (!data.adminCode) {
+    return { ok: false, error: 'Admin code is required' };
+  }
+  
+  if (data.adminCode === ADMIN_CODE) {
+    return { ok: true, message: 'Admin code is valid' };
+  } else {
+    return { ok: false, error: 'Invalid admin code' };
+  }
 }
 
 function setupSheet() {
