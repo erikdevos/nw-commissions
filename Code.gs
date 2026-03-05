@@ -70,6 +70,9 @@ function handleRequest(e) {
       case 'validateAdmin':
         result = handleValidateAdmin(e);
         break;
+      case 'permanentDeleteItem':
+        result = handlePermanentDeleteItem(e);
+        break;
       case 'bulk':
         result = handleBulk(e);
         break;
@@ -486,6 +489,46 @@ function handleValidateAdmin(e) {
     return { ok: true, message: 'Admin code is valid' };
   } else {
     return { ok: false, error: 'Invalid admin code' };
+  }
+}
+
+function handlePermanentDeleteItem(e) {
+  const data = e.parameter;
+  
+  if (!data.id) {
+    return { ok: false, error: 'ID is required' };
+  }
+  
+  if (data.adminCode !== ADMIN_CODE) {
+    return { ok: false, error: 'Invalid admin code' };
+  }
+  
+  try {
+    const sheet = getSheet();
+    const allData = sheet.getDataRange().getValues();
+    
+    // Find the row to delete (iterate backwards to avoid index issues)
+    let rowIndexToDelete = -1;
+    for (let i = allData.length - 1; i >= 1; i--) {
+      if (allData[i][COLUMNS.id] === data.id) {
+        rowIndexToDelete = i + 1; // +1 because sheet rows are 1-based
+        break;
+      }
+    }
+    
+    if (rowIndexToDelete === -1) {
+      return { ok: false, error: 'Item not found' };
+    }
+    
+    // Delete the row
+    sheet.deleteRow(rowIndexToDelete);
+    
+    Logger.log('Permanently deleted item with ID: ' + data.id);
+    return { ok: true, message: 'Item permanently deleted' };
+    
+  } catch (error) {
+    Logger.log('Error in handlePermanentDeleteItem: ' + error.toString());
+    return { ok: false, error: error.message };
   }
 }
 

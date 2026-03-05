@@ -146,8 +146,8 @@
         <div class="list-header">
           <div class="header-controls">
             <div class="tabs" role="tablist" aria-label="Product status">
-              <button @click="switchTab('archive')" :class="{'tab': true, 'active': currentStatus === 'archive'}" role="tab" :aria-selected="currentStatus === 'archive'" aria-controls="archive-panel" id="archive-tab">Shop</button>
               <button @click="switchTab('open')" :class="{'tab': true, 'active': currentStatus === 'open'}" role="tab" :aria-selected="currentStatus === 'open'" aria-controls="open-panel" id="open-tab">Verzoeken</button>
+              <button @click="switchTab('archive')" :class="{'tab': true, 'active': currentStatus === 'archive'}" role="tab" :aria-selected="currentStatus === 'archive'" aria-controls="archive-panel" id="archive-tab">Shop</button>
               <button @click="switchTab('closed')" :class="{'tab': true, 'active': currentStatus === 'closed'}" role="tab" :aria-selected="currentStatus === 'closed'" aria-controls="closed-panel" id="closed-tab">Besteld</button>
               <button x-show="isAdmin" @click="switchTab('deleted')" :class="{'tab': true, 'active': currentStatus === 'deleted'}" role="tab" :aria-selected="currentStatus === 'deleted'" aria-controls="deleted-panel" id="deleted-tab">Verwijderd</button>
             </div>
@@ -233,10 +233,16 @@
                   </div>
                 </template>
                 <template x-if="item.status === 'deleted'">
-                  <button @click="setItemStatus(item.id, 'open', $el)" class="btn btn-sm btn-primary" :class="{'loading': $el.classList.contains('loading')}">
-                    <span class="btn-text">Opnieuw bestellen</span>
-                    <span class="btn-loader">Bezig...</span>
-                  </button>
+                  <div class="item-action-group">
+                    <button @click="setItemStatus(item.id, 'open', $el)" class="btn btn-sm btn-primary" :class="{'loading': $el.classList.contains('loading')}">
+                      <span class="btn-text">Opnieuw bestellen</span>
+                      <span class="btn-loader">Bezig...</span>
+                    </button>
+                    <button @click="permanentDeleteItem(item.id, $el)" class="btn btn-sm btn-danger" :class="{'loading': $el.classList.contains('loading')}">
+                      <span class="btn-text">Verwijderen</span>
+                      <span class="btn-loader">Bezig...</span>
+                    </button>
+                  </div>
                 </template>
               </div>
             </div>

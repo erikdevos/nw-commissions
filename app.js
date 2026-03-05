@@ -5,7 +5,7 @@ function groceryApp() {
     API_BASE_URL: typeof CONFIG !== 'undefined' ? CONFIG.API_BASE_URL : '',
     
     // State
-    currentStatus: 'archive',
+    currentStatus: 'open',
     loading: false,
     formLoading: false,
     bulkLoading: false,
@@ -600,6 +600,53 @@ function groceryApp() {
       }
     },
     
+    permanentDeleteItem(id, buttonEl) {
+      console.log('[permanentDeleteItem] Permanently deleting item:', id);
+      
+      const storedCode = this.getStoredAdminCode();
+      if (storedCode) {
+        this.adminCode = storedCode;
+        if (confirm('⚠️ WAARSCHUWING: Dit verwijdert dit product PERMANENT uit de database.\n\nDeze actie kan NIET ongedaan worden gemaakt.\n\nWeet je zeker dat je door wilt gaan?')) {
+          this.executePermanentDelete(id, buttonEl);
+        }
+      } else {
+        this.pendingAdminAction = { type: 'permanentDelete', id };
+        this.openAdminModal();
+      }
+    },
+    
+    async executePermanentDelete(id, buttonEl) {
+      console.log('[executePermanentDelete] Executing permanent delete for:', id);
+      
+      if (buttonEl) buttonEl.classList.add('loading');
+      
+      try {
+        await this.apiRequest('?action=permanentDeleteItem', {
+          params: {
+            id,
+            adminCode: this.adminCode
+          }
+        });
+        
+        this.showNotification('Product permanent verwijderd', 'success');
+        
+        // Invalidate cache and reload
+        this.invalidateCache('deleted');
+        if (this.currentStatus === 'deleted') {
+          await this.loadItems();
+        }
+        
+      } catch (error) {
+        console.error('[executePermanentDelete] Error:', error);
+        this.showNotification(error.message, 'error');
+        if (error.message.includes('admin')) {
+          this.adminCode = null;
+        }
+      } finally {
+        if (buttonEl) buttonEl.classList.remove('loading');
+      }
+    },
+    
     // Bulk Actions
     async handleDeleteTabItems() {
       let action;
@@ -750,6 +797,8 @@ function groceryApp() {
           await this.executeBulkAction(actionToExecute.action);
         } else if (actionToExecute.type === 'deleteItem') {
           await this.setItemStatus(actionToExecute.id, 'deleted');
+        } else if (actionToExecute.type === 'permanentDelete') {
+          await this.executePermanentDelete(actionToExecute.id);
         } else if (actionToExecute.type === 'setStatus') {
           await this.setItemStatus(actionToExecute.id, actionToExecute.status);
         }
