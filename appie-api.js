@@ -1,29 +1,9 @@
-// Appie API Service - Direct JavaScript implementation
+// Appie API Service - Proxy through Google Apps Script
 class AppieApiService {
   constructor() {
-    this.baseUrl = 'https://api.ah.nl';
-    this.clientId = 'appie-ios';
-    this.clientVersion = '9.28';
-    this.userAgent = 'Appie/9.28 (iPhone17,3; iPhone; CPU OS 26_1 like Mac OS X)';
+    this.apiBaseUrl = typeof CONFIG !== 'undefined' ? CONFIG.API_BASE_URL : '';
     this.accessToken = null;
     this.tokenExpiry = null;
-  }
-
-  getHeaders(token) {
-    const headers = {
-      'Accept': 'application/json',
-      'Content-Type': 'application/json',
-      'User-Agent': this.userAgent,
-      'x-client-name': this.clientId,
-      'x-client-version': this.clientVersion,
-      'x-application': 'AHWEBSHOP'
-    };
-
-    if (token) {
-      headers['Authorization'] = `Bearer ${token}`;
-    }
-
-    return headers;
   }
 
   async getAnonymousToken() {
@@ -33,27 +13,29 @@ class AppieApiService {
     }
 
     try {
-      console.log('[Appie API] Requesting new anonymous token...');
+      console.log('[Appie API] Requesting new anonymous token via proxy...');
       
-      const response = await fetch(`${this.baseUrl}/mobile-auth/v1/auth/token/anonymous`, {
-        method: 'POST',
-        headers: this.getHeaders(),
-        body: JSON.stringify({ clientId: this.clientId }),
-        mode: 'cors'
+      const response = await fetch(`${this.apiBaseUrl}?action=proxyAHToken`, {
+        method: 'GET'
       });
 
       if (!response.ok) {
         throw new Error(`Token request failed: ${response.status}`);
       }
 
-      const data = await response.json();
-      this.accessToken = data.access_token || data.accessToken;
+      const result = await response.json();
+      
+      if (!result.ok) {
+        throw new Error(result.error || 'Token request failed');
+      }
+
+      this.accessToken = result.data.access_token || result.data.accessToken;
       
       if (!this.accessToken) {
         throw new Error('No access token in response');
       }
 
-      const expiresIn = data.expires_in || data.expiresIn || 3600;
+      const expiresIn = result.data.expires_in || result.data.expiresIn || 3600;
       this.tokenExpiry = Date.now() + (expiresIn * 1000) - 60000;
 
       console.log('[Appie API] Token obtained, expires in', expiresIn, 'seconds');
@@ -61,21 +43,7 @@ class AppieApiService {
       
     } catch (error) {
       console.error('[Appie API] Token error:', error);
-      console.error('[Appie API] Error details:', {
-        message: error.message,
-        stack: error.stack,
-        name: error.name
-      });
-      
-      // Provide more specific error messages
-      if (error.message.includes('Failed to fetch')) {
-        console.warn('[Appie API] This might be a CORS issue. Check if running from localhost vs production.');
-        throw new Error('CORS error: AH API cannot be accessed directly from browser');
-      } else if (error.message.includes('CORS')) {
-        throw new Error('CORS error: Cross-origin request blocked');
-      } else {
-        throw error;
-      }
+      throw error;
     }
   }
 
@@ -87,28 +55,30 @@ class AppieApiService {
     try {
       const token = await this.getAnonymousToken();
       
-      const params = new URLSearchParams({
-        query: query.trim(),
-        page: '0',
-        size: String(limit),
-        sortOn: 'RELEVANCE'
-      });
-
-      const url = `${this.baseUrl}/mobile-services/product/search/v2?${params.toString()}`;
-      
       console.log('[Appie API] Searching for:', query);
       
-      const response = await fetch(url, {
-        method: 'GET',
-        headers: this.getHeaders(token),
-        mode: 'cors'
+      const params = new URLSearchParams({
+        action: 'proxyAHSearch',
+        query: query.trim(),
+        token: token,
+        size: String(limit)
+      });
+
+      const response = await fetch(`${this.apiBaseUrl}?${params.toString()}`, {
+        method: 'GET'
       });
 
       if (!response.ok) {
         throw new Error(`Product search failed: ${response.status}`);
       }
 
-      const data = await response.json();
+      const result = await response.json();
+      
+      if (!result.ok) {
+        throw new Error(result.error || 'Search request failed');
+      }
+
+      const data = result.data;
       
       if (!data.products || !Array.isArray(data.products)) {
         return [];

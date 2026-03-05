@@ -73,6 +73,12 @@ function handleRequest(e) {
       case 'permanentDeleteItem':
         result = handlePermanentDeleteItem(e);
         break;
+      case 'proxyAHToken':
+        result = handleProxyAHToken(e);
+        break;
+      case 'proxyAHSearch':
+        result = handleProxyAHSearch(e);
+        break;
       case 'bulk':
         result = handleBulk(e);
         break;
@@ -528,6 +534,83 @@ function handlePermanentDeleteItem(e) {
     
   } catch (error) {
     Logger.log('Error in handlePermanentDeleteItem: ' + error.toString());
+    return { ok: false, error: error.message };
+  }
+}
+
+function handleProxyAHToken(e) {
+  try {
+    const url = 'https://api.ah.nl/mobile-auth/v1/auth/token/anonymous';
+    
+    const options = {
+      method: 'post',
+      contentType: 'application/json',
+      headers: {
+        'User-Agent': 'Appie/9.28 (iPhone17,3; iPhone; CPU OS 26_1 like Mac OS X)',
+        'x-client-name': 'appie-ios',
+        'x-client-version': '9.28',
+        'x-application': 'AHWEBSHOP'
+      },
+      payload: JSON.stringify({ clientId: 'appie-ios' }),
+      muteHttpExceptions: true
+    };
+    
+    const response = UrlFetchApp.fetch(url, options);
+    const responseCode = response.getResponseCode();
+    const responseText = response.getContentText();
+    
+    if (responseCode !== 200) {
+      Logger.log('AH Token error: ' + responseCode + ' - ' + responseText);
+      return { ok: false, error: 'Token request failed: ' + responseCode };
+    }
+    
+    const data = JSON.parse(responseText);
+    return { ok: true, data: data };
+    
+  } catch (error) {
+    Logger.log('Error in handleProxyAHToken: ' + error.toString());
+    return { ok: false, error: error.message };
+  }
+}
+
+function handleProxyAHSearch(e) {
+  const data = e.parameter;
+  
+  if (!data.query || !data.token) {
+    return { ok: false, error: 'Query and token are required' };
+  }
+  
+  try {
+    const query = encodeURIComponent(data.query);
+    const size = data.size || '10';
+    const url = 'https://api.ah.nl/mobile-services/product/search/v2?query=' + query + '&page=0&size=' + size + '&sortOn=RELEVANCE';
+    
+    const options = {
+      method: 'get',
+      headers: {
+        'Authorization': 'Bearer ' + data.token,
+        'User-Agent': 'Appie/9.28 (iPhone17,3; iPhone; CPU OS 26_1 like Mac OS X)',
+        'x-client-name': 'appie-ios',
+        'x-client-version': '9.28',
+        'x-application': 'AHWEBSHOP'
+      },
+      muteHttpExceptions: true
+    };
+    
+    const response = UrlFetchApp.fetch(url, options);
+    const responseCode = response.getResponseCode();
+    const responseText = response.getContentText();
+    
+    if (responseCode !== 200) {
+      Logger.log('AH Search error: ' + responseCode + ' - ' + responseText);
+      return { ok: false, error: 'Search request failed: ' + responseCode };
+    }
+    
+    const responseData = JSON.parse(responseText);
+    return { ok: true, data: responseData };
+    
+  } catch (error) {
+    Logger.log('Error in handleProxyAHSearch: ' + error.toString());
     return { ok: false, error: error.message };
   }
 }
