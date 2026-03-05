@@ -29,6 +29,14 @@ function groceryApp() {
       name: ''
     },
     
+    // Watchers
+    'form.name'(newValue) {
+      console.log('[form.name watcher] Name changed to:', newValue);
+      if (newValue) {
+        this.storeUserName(newValue);
+      }
+    },
+    
     // Messages
     formMessage: { text: '', type: '' },
     listMessage: { text: '', type: '' },
@@ -50,6 +58,7 @@ function groceryApp() {
     // Constants
     ADMIN_CODE_STORAGE_KEY: 'grocery_admin_code',
     ADMIN_CODE_EXPIRY_DAYS: 30,
+    NAME_STORAGE_KEY: 'grocery_user_name',
     
     // Computed
     get currentItems() {
@@ -75,6 +84,11 @@ function groceryApp() {
       
       // Load stored admin code
       this.adminCode = this.getStoredAdminCode();
+      
+      // Load stored user name
+      const storedName = this.getStoredUserName();
+      this.form.name = storedName;
+      console.log('[Alpine App] Loaded stored name:', storedName);
       
       // Run one-time migration to populate archive
       this.migrateClosedToArchive();
@@ -762,6 +776,27 @@ function groceryApp() {
         console.log('[storeAdminCode] Admin code stored for 30 days');
       } catch (e) {
         console.error('[storeAdminCode] Error:', e);
+      }
+    },
+    
+    // User Name Storage
+    getStoredUserName() {
+      try {
+        const stored = localStorage.getItem(this.NAME_STORAGE_KEY);
+        console.log('[getStoredUserName] Retrieved name:', stored);
+        return stored || '';
+      } catch (e) {
+        console.error('[getStoredUserName] Error:', e);
+        return '';
+      }
+    },
+    
+    storeUserName(name) {
+      try {
+        localStorage.setItem(this.NAME_STORAGE_KEY, name);
+        console.log('[storeUserName] User name stored:', name);
+      } catch (e) {
+        console.error('[storeUserName] Error:', e);
       }
     },
     

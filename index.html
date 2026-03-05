@@ -63,7 +63,7 @@
 
           <div class="form-group">
             <label for="name">Jouw naam *</label>
-            <select id="name" x-model="form.name" required>
+            <select id="name" x-model="form.name" @change="storeUserName(form.name)" required>
               <option value="">Kies je naam...</option>
               <option value="Anne">Anne</option>
               <option value="Chiara">Chiara</option>
