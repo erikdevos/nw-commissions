@@ -1,9 +1,22 @@
-// Appie API Service - Proxy through Google Apps Script
+// Appie API Service - Direct API calls
 class AppieApiService {
   constructor() {
-    this.apiBaseUrl = typeof CONFIG !== 'undefined' ? CONFIG.API_BASE_URL : '';
+    this.baseUrl = 'https://api.ah.nl';
+    this.clientId = 'appie';
     this.accessToken = null;
     this.tokenExpiry = null;
+  }
+
+  getHeaders(token) {
+    const headers = {
+      'Content-Type': 'application/json'
+    };
+
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    return headers;
   }
 
   async getAnonymousToken() {
@@ -13,29 +26,26 @@ class AppieApiService {
     }
 
     try {
-      console.log('[Appie API] Requesting new anonymous token via proxy...');
+      console.log('[Appie API] Requesting new anonymous token...');
       
-      const response = await fetch(`${this.apiBaseUrl}?action=proxyAHToken`, {
-        method: 'GET'
+      const response = await fetch(`${this.baseUrl}/mobile-auth/v1/auth/token/anonymous`, {
+        method: 'POST',
+        headers: this.getHeaders(),
+        body: JSON.stringify({ clientId: this.clientId })
       });
 
       if (!response.ok) {
         throw new Error(`Token request failed: ${response.status}`);
       }
 
-      const result = await response.json();
-      
-      if (!result.ok) {
-        throw new Error(result.error || 'Token request failed');
-      }
-
-      this.accessToken = result.data.access_token || result.data.accessToken;
+      const data = await response.json();
+      this.accessToken = data.access_token || data.accessToken;
       
       if (!this.accessToken) {
         throw new Error('No access token in response');
       }
 
-      const expiresIn = result.data.expires_in || result.data.expiresIn || 3600;
+      const expiresIn = data.expires_in || data.expiresIn || 3600;
       this.tokenExpiry = Date.now() + (expiresIn * 1000) - 60000;
 
       console.log('[Appie API] Token obtained, expires in', expiresIn, 'seconds');
@@ -58,27 +68,20 @@ class AppieApiService {
       console.log('[Appie API] Searching for:', query);
       
       const params = new URLSearchParams({
-        action: 'proxyAHSearch',
         query: query.trim(),
-        token: token,
-        size: String(limit)
+        sortOn: 'RELEVANCE'
       });
 
-      const response = await fetch(`${this.apiBaseUrl}?${params.toString()}`, {
-        method: 'GET'
+      const response = await fetch(`${this.baseUrl}/mobile-services/product/search/v2?${params.toString()}`, {
+        method: 'GET',
+        headers: this.getHeaders(token)
       });
 
       if (!response.ok) {
         throw new Error(`Product search failed: ${response.status}`);
       }
 
-      const result = await response.json();
-      
-      if (!result.ok) {
-        throw new Error(result.error || 'Search request failed');
-      }
-
-      const data = result.data;
+      const data = await response.json();
       
       if (!data.products || !Array.isArray(data.products)) {
         return [];
