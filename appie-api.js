@@ -1,6 +1,8 @@
 // Appie API Service - Direct JavaScript implementation
 class AppieApiService {
   constructor() {
+    // Use CORS proxy to bypass CORS restrictions
+    this.corsProxy = 'https://corsproxy.io/?';
     this.baseUrl = 'https://api.ah.nl';
     this.clientId = 'appie-ios';
     this.clientVersion = '9.28';
@@ -35,7 +37,8 @@ class AppieApiService {
     try {
       console.log('[Appie API] Requesting new anonymous token...');
       
-      const response = await fetch(`${this.baseUrl}/mobile-auth/v1/auth/token/anonymous`, {
+      const url = `${this.corsProxy}${encodeURIComponent(this.baseUrl + '/mobile-auth/v1/auth/token/anonymous')}`;
+      const response = await fetch(url, {
         method: 'POST',
         headers: this.getHeaders(),
         body: JSON.stringify({ clientId: this.clientId })
@@ -79,7 +82,8 @@ class AppieApiService {
         sortOn: 'RELEVANCE'
       });
 
-      const url = `${this.baseUrl}/mobile-services/product/search/v2?${params.toString()}`;
+      const apiUrl = `${this.baseUrl}/mobile-services/product/search/v2?${params.toString()}`;
+      const url = `${this.corsProxy}${encodeURIComponent(apiUrl)}`;
       
       console.log('[Appie API] Searching for:', query);
       
