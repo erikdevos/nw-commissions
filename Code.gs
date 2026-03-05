@@ -545,13 +545,7 @@ function handleProxyAHToken(e) {
     const options = {
       method: 'post',
       contentType: 'application/json',
-      headers: {
-        'User-Agent': 'Appie/9.28 (iPhone17,3; iPhone; CPU OS 26_1 like Mac OS X)',
-        'x-client-name': 'appie-ios',
-        'x-client-version': '9.28',
-        'x-application': 'AHWEBSHOP'
-      },
-      payload: JSON.stringify({ clientId: 'appie-ios' }),
+      payload: JSON.stringify({ clientId: 'appie' }),
       muteHttpExceptions: true
     };
     
@@ -559,9 +553,10 @@ function handleProxyAHToken(e) {
     const responseCode = response.getResponseCode();
     const responseText = response.getContentText();
     
+    Logger.log('AH Token response: ' + responseCode + ' - ' + responseText.substring(0, 200));
+    
     if (responseCode !== 200) {
-      Logger.log('AH Token error: ' + responseCode + ' - ' + responseText);
-      return { ok: false, error: 'Token request failed: ' + responseCode };
+      return { ok: false, error: 'Token request failed: ' + responseCode + ' - ' + responseText };
     }
     
     const data = JSON.parse(responseText);
@@ -583,16 +578,12 @@ function handleProxyAHSearch(e) {
   try {
     const query = encodeURIComponent(data.query);
     const size = data.size || '10';
-    const url = 'https://api.ah.nl/mobile-services/product/search/v2?query=' + query + '&page=0&size=' + size + '&sortOn=RELEVANCE';
+    const url = 'https://api.ah.nl/mobile-services/product/search/v2?query=' + query + '&sortOn=RELEVANCE';
     
     const options = {
       method: 'get',
       headers: {
-        'Authorization': 'Bearer ' + data.token,
-        'User-Agent': 'Appie/9.28 (iPhone17,3; iPhone; CPU OS 26_1 like Mac OS X)',
-        'x-client-name': 'appie-ios',
-        'x-client-version': '9.28',
-        'x-application': 'AHWEBSHOP'
+        'Authorization': 'Bearer ' + data.token
       },
       muteHttpExceptions: true
     };
@@ -601,8 +592,10 @@ function handleProxyAHSearch(e) {
     const responseCode = response.getResponseCode();
     const responseText = response.getContentText();
     
+    Logger.log('AH Search response: ' + responseCode);
+    
     if (responseCode !== 200) {
-      Logger.log('AH Search error: ' + responseCode + ' - ' + responseText);
+      Logger.log('AH Search error: ' + responseText.substring(0, 500));
       return { ok: false, error: 'Search request failed: ' + responseCode };
     }
     
