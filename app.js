@@ -923,38 +923,43 @@ function groceryApp() {
     
     // Product Search Methods
     async handleSearchInput() {
-      clearTimeout(this.searchDebounceTimer);
-      
-      const query = this.searchQuery.trim();
-      
-      if (query.length < 2) {
-        this.searchResults = [];
-        this.showSearchResults = false;
-        return;
+      if (this.searchDebounceTimer) {
+        clearTimeout(this.searchDebounceTimer);
       }
       
       this.searchDebounceTimer = setTimeout(async () => {
-        await this.searchProducts(query);
+        const query = this.searchQuery.trim();
+        if (query.length < 2) {
+          this.searchResults = [];
+          this.showSearchResults = false;
+          return;
+        }
+        
+        this.searchLoading = true;
+        
+        try {
+          const results = await appieApi.searchProducts(query);
+          this.searchResults = results;
+          this.showSearchResults = results.length > 0;
+          console.log('[searchProducts] Found', results.length, 'products');
+        } catch (error) {
+          console.error('[searchProducts] Error:', error);
+          
+          // Handle different types of errors
+          if (error.message.includes('Failed to fetch') || error.message.includes('CORS')) {
+            this.showNotification('Product zoeken is momenteel niet beschikbaar. Gebruik de AH link handmatig.', 'error');
+          } else if (error.message.includes('Network')) {
+            this.showNotification('Netwerkfout. Controleer je verbinding.', 'error');
+          } else {
+            this.showNotification('Zoeken mislukt. Probeer het opnieuw.', 'error');
+          }
+          
+          this.searchResults = [];
+          this.showSearchResults = false;
+        } finally {
+          this.searchLoading = false;
+        }
       }, 300);
-    },
-    
-    async searchProducts(query) {
-      console.log('[searchProducts] Searching for:', query);
-      this.searchLoading = true;
-      
-      try {
-        const results = await appieApi.searchProducts(query);
-        this.searchResults = results;
-        this.showSearchResults = results.length > 0;
-        console.log('[searchProducts] Found', results.length, 'products');
-      } catch (error) {
-        console.error('[searchProducts] Error:', error);
-        this.showNotification('Zoeken mislukt: ' + error.message, 'error');
-        this.searchResults = [];
-        this.showSearchResults = false;
-      } finally {
-        this.searchLoading = false;
-      }
     },
     
     selectProduct(product) {

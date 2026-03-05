@@ -38,7 +38,8 @@ class AppieApiService {
       const response = await fetch(`${this.baseUrl}/mobile-auth/v1/auth/token/anonymous`, {
         method: 'POST',
         headers: this.getHeaders(),
-        body: JSON.stringify({ clientId: this.clientId })
+        body: JSON.stringify({ clientId: this.clientId }),
+        mode: 'cors'
       });
 
       if (!response.ok) {
@@ -60,7 +61,21 @@ class AppieApiService {
       
     } catch (error) {
       console.error('[Appie API] Token error:', error);
-      throw error;
+      console.error('[Appie API] Error details:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
+      
+      // Provide more specific error messages
+      if (error.message.includes('Failed to fetch')) {
+        console.warn('[Appie API] This might be a CORS issue. Check if running from localhost vs production.');
+        throw new Error('CORS error: AH API cannot be accessed directly from browser');
+      } else if (error.message.includes('CORS')) {
+        throw new Error('CORS error: Cross-origin request blocked');
+      } else {
+        throw error;
+      }
     }
   }
 
@@ -85,7 +100,8 @@ class AppieApiService {
       
       const response = await fetch(url, {
         method: 'GET',
-        headers: this.getHeaders(token)
+        headers: this.getHeaders(token),
+        mode: 'cors'
       });
 
       if (!response.ok) {
