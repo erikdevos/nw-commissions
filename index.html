@@ -36,65 +36,105 @@
         <form @submit.prevent="handleSubmit" class="grocery-form" novalidate>
           <fieldset>
             <legend class="visually-hidden">Product toevoegen aan boodschappenlijst</legend>
-          <div class="form-group">
-            <label for="ahUrl">AH Link *</label>
-            <input type="url" id="ahUrl" x-model="form.ahUrl" @blur="extractProductNameFromUrl" required placeholder="https://www.ah.nl/producten/product/...">
+          <!-- Hidden fields for API compatibility -->
+          <input type="hidden" id="ahUrl" x-model="form.ahUrl">
+          <input type="hidden" id="item" x-model="form.item">
+          <input type="hidden" id="imageUrl" x-model="form.imageUrl">
+
+          <div class="form-group search-group">
+            <label for="productSearch">Zoek product bij Albert Heijn</label>
+            <div class="search-input-wrapper">
+              <input 
+                type="text" 
+                id="productSearch" 
+                x-model="searchQuery" 
+                @input="handleSearchInput"
+                @focus="searchQuery.length >= 2 && searchResults.length > 0 ? showSearchResults = true : null"
+                placeholder="Zoek een product..."
+                autocomplete="off">
+              <div class="search-spinner" x-show="searchLoading">
+                <div class="spinner-small"></div>
+              </div>
+            </div>
+            
+            <div class="search-results" x-show="showSearchResults" @click.away="showSearchResults = false">
+              <template x-for="product in searchResults" :key="product.id">
+                <div class="search-result-item" @click="selectProduct(product)">
+                  <img :src="product.imageUrl" :alt="product.title" class="search-result-image" @error="$el.style.display='none'">
+                  <div class="search-result-content">
+                    <div class="search-result-title" x-text="product.title"></div>
+                    <div class="search-result-meta">
+                      <span x-show="product.brand" x-text="product.brand"></span>
+                      <span x-show="product.unitSize" x-text="product.unitSize"></span>
+                      <span class="search-result-price" x-text="formatPrice(product.price)"></span>
+                    </div>
+                  </div>
+                </div>
+              </template>
+            </div>
+          </div>
+          
+          <!-- Product Preview -->
+          <div x-show="form.item && form.ahUrl" class="product-preview">
+            <div class="product-preview-header">
+              <span>Geselecteerd product</span>
+              <button type="button" @click="clearForm()" class="btn-clear-product">✕</button>
+            </div>
+            <div class="product-preview-content">
+              <img x-show="form.imageUrl" :src="form.imageUrl" :alt="form.item" class="product-preview-image" @error="$el.style.display='none'">
+              <div class="product-preview-info">
+                <div class="product-preview-title" x-text="form.item"></div>
+                <a x-show="form.ahUrl" :href="form.ahUrl" target="_blank" rel="noopener" class="product-preview-link">Bekijk op AH.nl →</a>
+              </div>
+            </div>
           </div>
 
-          <div class="form-group">
-            <label for="item">Product naam *</label>
-            <input type="text" id="item" x-model="form.item" required placeholder="Welk product?">
-          </div>
+          <div x-show="form.item && form.ahUrl">
+            <div class="form-group">
+              <label for="quantity">Hoeveelheid</label>
+              <input type="number" id="quantity" x-model="form.quantity" min="1" max="10" placeholder="1" @input="form.quantity = Math.max(1, Math.min(10, parseInt(form.quantity) || 1))">
+            </div>
 
-          <div class="form-group">
-            <label for="imageUrl">Afbeelding url (optioneel)</label>
-            <input type="url" id="imageUrl" x-model="form.imageUrl" placeholder="Optioneel - handmatig toevoegen">
-          </div>
+            <div class="form-group">
+              <label for="substituteFor">Vervangt (optioneel)</label>
+              <input type="text" id="substituteFor" x-model="form.substituteFor" placeholder="In plaats van iets anders?">
+            </div>
 
-          <div class="form-group">
-            <label for="quantity">Hoeveelheid</label>
-            <input type="number" id="quantity" x-model="form.quantity" min="1" max="10" placeholder="1" @input="form.quantity = Math.max(1, Math.min(10, parseInt(form.quantity) || 1))">
-          </div>
+            <div class="form-group">
+              <label for="name">Jouw naam *</label>
+              <select id="name" x-model="form.name" @change="storeUserName(form.name)" required>
+                <option value="">Kies je naam...</option>
+                <option value="Anne">Anne</option>
+                <option value="Chiara">Chiara</option>
+                <option value="Christiaan">Christiaan</option>
+                <option value="Eddie">Eddie</option>
+                <option value="Elde">Elde</option>
+                <option value="Erik">Erik</option>
+                <option value="Jean-Pierre">Jean-Pierre</option>
+                <option value="Julian">Julian</option>
+                <option value="Michel">Michel</option>
+                <option value="Peggy">Peggy</option>
+                <option value="Percy">Percy</option>
+                <option value="Remco">Remco</option>
+                <option value="Richard">Richard</option>
+                <option value="Roel">Roel</option>
+                <option value="Sabien">Sabien</option>
+                <option value="Sander">Sander</option>
+                <option value="Steve">Steve</option>
+              </select>
+            </div>
 
-          <div class="form-group">
-            <label for="substituteFor">Vervangt</label>
-            <input type="text" id="substituteFor" x-model="form.substituteFor" placeholder="In plaats van iets anders?">
-          </div>
+            <div x-show="formMessage.text" :class="'message ' + formMessage.type" x-text="formMessage.text"></div>
 
-          <div class="form-group">
-            <label for="name">Jouw naam *</label>
-            <select id="name" x-model="form.name" @change="storeUserName(form.name)" required>
-              <option value="">Kies je naam...</option>
-              <option value="Anne">Anne</option>
-              <option value="Chiara">Chiara</option>
-              <option value="Christiaan">Christiaan</option>
-              <option value="Eddie">Eddie</option>
-              <option value="Elde">Elde</option>
-              <option value="Erik">Erik</option>
-              <option value="Jean-Pierre">Jean-Pierre</option>
-              <option value="Julian">Julian</option>
-              <option value="Michel">Michel</option>
-              <option value="Peggy">Peggy</option>
-              <option value="Percy">Percy</option>
-              <option value="Remco">Remco</option>
-              <option value="Richard">Richard</option>
-              <option value="Roel">Roel</option>
-              <option value="Sabien">Sabien</option>
-              <option value="Sander">Sander</option>
-              <option value="Steve">Steve</option>
-            </select>
-          </div>
-
-          <div x-show="formMessage.text" :class="'message ' + formMessage.type" x-text="formMessage.text"></div>
-
-          <div class="form-buttons">
-            <button type="submit" class="btn btn-primary" :disabled="formLoading" :class="{'loading': formLoading}">
-              <span class="btn-text">Toevoegen aan lijst</span>
-              <span class="btn-loader">Opslaan...</span>
-            </button>
-            <button type="button" class="btn btn-secondary" @click="clearForm" :disabled="formLoading">
-              <span class="btn-text">Legen</span>
-            </button>
+            <div class="form-buttons">
+              <button type="submit" class="btn btn-primary" :disabled="formLoading" :class="{'loading': formLoading}">
+                <span class="btn-text">Toevoegen aan lijst</span>
+                <span class="btn-loader">Opslaan...</span>
+              </button>
+              <button type="button" class="btn btn-secondary" @click="clearForm" :disabled="formLoading">
+                <span class="btn-text">Legen</span>
+              </button>
+            </div>
           </div>
           </fieldset>
         </form>
@@ -237,6 +277,7 @@
   </div>
 
   <script src="config.js"></script>
+  <script src="appie-api.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -60,6 +60,13 @@ function groceryApp() {
     ADMIN_CODE_EXPIRY_DAYS: 30,
     NAME_STORAGE_KEY: 'grocery_user_name',
     
+    // Product Search
+    searchQuery: '',
+    searchResults: [],
+    searchLoading: false,
+    showSearchResults: false,
+    searchDebounceTimer: null,
+    
     // Computed
     get currentItems() {
       return this.items[this.currentStatus] || [];
@@ -328,6 +335,13 @@ function groceryApp() {
       this.formMessage = { text: '', type: '' };
       
       try {
+        // Validate product selection
+        if (!this.form.item || !this.form.ahUrl) {
+          this.formMessage = { text: 'Selecteer eerst een product via de zoekfunctie', type: 'error' };
+          this.formLoading = false;
+          return;
+        }
+        
         // Validate quantity
         const quantity = parseInt(this.form.quantity) || 1;
         console.log('[handleSubmit] Quantity:', quantity);
@@ -411,6 +425,11 @@ function groceryApp() {
         substituteFor: '',
         name: ''
       };
+      
+      // Also clear search state
+      this.searchQuery = '';
+      this.searchResults = [];
+      this.showSearchResults = false;
     },
     
     // Item Actions
@@ -432,37 +451,29 @@ function groceryApp() {
       }
     },
     
-    async addArchiveItemToList(item) {
-      console.log('[addArchiveItemToList] Adding archive item to list:', item);
+    addArchiveItemToList(item) {
+      console.log('[addArchiveItemToList] Prefilling form with archive item:', item);
       
-      this.formLoading = true;
+      // Prefill the form with archive item data
+      this.form.ahUrl = item.ahUrl || '';
+      this.form.item = item.item;
+      this.form.imageUrl = item.imageUrl || '';
+      this.form.quantity = 1;
+      this.form.substituteFor = '';
+      // Keep the stored name if available
       
-      try {
-        const formData = {
-          ahUrl: item.ahUrl || '',
-          item: item.item,
-          imageUrl: item.imageUrl || '',
-          quantity: 1,
-          substituteFor: '',
-          name: ''
-        };
-        
-        await this.apiRequest('?action=add', { params: formData });
-        
-        this.showNotification('Product toegevoegd aan verzoeken!', 'success');
-        
-        // Invalidate cache and reload
-        this.invalidateCache('open');
-        if (this.currentStatus === 'open') {
-          await this.loadItems();
-        }
-        
-      } catch (error) {
-        console.error('[addArchiveItemToList] Error:', error);
-        this.showNotification(error.message, 'error');
-      } finally {
-        this.formLoading = false;
+      // Clear search state
+      this.searchQuery = '';
+      this.searchResults = [];
+      this.showSearchResults = false;
+      
+      // Scroll to form
+      const formSection = document.getElementById('formSection');
+      if (formSection) {
+        formSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
+      
+      this.showNotification('Product toegevoegd aan formulier. Vul je naam en hoeveelheid in.', 'success');
     },
     
     async addItemToArchive(id) {
@@ -859,6 +870,69 @@ function groceryApp() {
       } catch {
         return isoString;
       }
+    },
+    
+    // Product Search Methods
+    async handleSearchInput() {
+      clearTimeout(this.searchDebounceTimer);
+      
+      const query = this.searchQuery.trim();
+      
+      if (query.length < 2) {
+        this.searchResults = [];
+        this.showSearchResults = false;
+        return;
+      }
+      
+      this.searchDebounceTimer = setTimeout(async () => {
+        await this.searchProducts(query);
+      }, 300);
+    },
+    
+    async searchProducts(query) {
+      console.log('[searchProducts] Searching for:', query);
+      this.searchLoading = true;
+      
+      try {
+        const results = await appieApi.searchProducts(query);
+        this.searchResults = results;
+        this.showSearchResults = results.length > 0;
+        console.log('[searchProducts] Found', results.length, 'products');
+      } catch (error) {
+        console.error('[searchProducts] Error:', error);
+        this.showNotification('Zoeken mislukt: ' + error.message, 'error');
+        this.searchResults = [];
+        this.showSearchResults = false;
+      } finally {
+        this.searchLoading = false;
+      }
+    },
+    
+    selectProduct(product) {
+      console.log('[selectProduct] Selected:', product.title);
+      
+      this.form.item = product.title;
+      this.form.ahUrl = product.url;
+      this.form.imageUrl = product.imageUrl || '';
+      
+      this.searchQuery = '';
+      this.searchResults = [];
+      this.showSearchResults = false;
+      
+      this.$nextTick(() => {
+        const quantityInput = document.getElementById('quantity');
+        if (quantityInput) quantityInput.focus();
+      });
+    },
+    
+    clearSearch() {
+      this.searchQuery = '';
+      this.searchResults = [];
+      this.showSearchResults = false;
+    },
+    
+    formatPrice(price) {
+      return appieApi.formatPrice(price);
     }
   };
 }
