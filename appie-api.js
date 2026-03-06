@@ -1,7 +1,6 @@
-// Appie API Service - Direct API implementation
+// Appie API Service - Vercel API proxy implementation
 class AppieApiService {
   constructor() {
-    this.baseUrl = 'https://api.ah.nl';
     this.accessToken = null;
     this.tokenExpiry = null;
   }
@@ -16,14 +15,8 @@ class AppieApiService {
     try {
       console.log('[Appie API] Requesting new anonymous token...');
       
-      const response = await fetch(`${this.baseUrl}/mobile-auth/v1/auth/token/anonymous`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          clientId: 'appie'
-        })
+      const response = await fetch('/api/ah-token', {
+        method: 'POST'
       });
 
       if (!response.ok) {
@@ -62,12 +55,10 @@ class AppieApiService {
       
       const params = new URLSearchParams({
         query: query.trim(),
-        sortOn: 'RELEVANCE',
-        page: '0',
-        size: String(limit)
+        limit: String(limit)
       });
 
-      const url = `${this.baseUrl}/mobile-services/product/search/v2?${params.toString()}`;
+      const url = `/api/ah-search?${params.toString()}`;
       
       console.log('[Appie API] Search URL:', url);
       
