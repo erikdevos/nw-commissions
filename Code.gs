@@ -37,8 +37,11 @@ function handleRequest(e) {
   const action = e.parameter.action || 'list';
   const clientIP = e.parameter.ip || 'unknown';
   
+  // Skip IP check for AH API proxy actions
+  const skipIPCheck = ['ahToken', 'ahSearch'].includes(action);
+  
   // Check IP whitelist
-  if (!ALLOWED_IPS.includes(clientIP)) {
+  if (!skipIPCheck && !ALLOWED_IPS.includes(clientIP)) {
     Logger.log('Access denied for IP: ' + clientIP);
     return ContentService
       .createTextOutput(JSON.stringify({ 
@@ -72,6 +75,12 @@ function handleRequest(e) {
         break;
       case 'bulk':
         result = handleBulk(e);
+        break;
+      case 'ahToken':
+        result = handleAHToken(e);
+        break;
+      case 'ahSearch':
+        result = handleAHSearch(e);
         break;
       default:
         result = { ok: false, error: 'Unknown action' };
@@ -499,4 +508,119 @@ function setupSheet() {
   }
   
   Logger.log('Sheet setup complete');
+}
+
+// AH API Proxy Functions
+function handleAHToken(e) {
+  const scriptProps = PropertiesService.getScriptProperties();
+  const cachedToken = scriptProps.getProperty('AH_TOKEN');
+  const tokenExpiry = scriptProps.getProperty('AH_TOKEN_EXPIRY');
+  
+  // Return cached token if still valid
+  if (cachedToken && tokenExpiry && Date.now() < parseInt(tokenExpiry)) {
+    return { ok: true, access_token: cachedToken };
+  }
+  
+  // Request new token
+  try {
+    const response = UrlFetchApp.fetch('https://api.ah.nl/mobile-auth/v1/auth/token/anonymous', {
+      method: 'post',
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json',
+        'x-client-name': 'appie-ios',
+        'x-client-version': '9.28',
+        'x-application': 'AHWEBSHOP'
+      },
+      payload: JSON.stringify({ clientId: 'appie-ios' }),
+      muteHttpExceptions: true
+    });
+    
+    const data = JSON.parse(response.getContentText());
+    
+    if (response.getResponseCode() !== 200) {
+      return { ok: false, error: 'Token request failed: ' + response.getResponseCode() };
+    }
+    
+    const token = data.access_token || data.accessToken;
+    const expiresIn = data.expires_in || data.expiresIn || 3600;
+    
+    // Cache token
+    scriptProps.setProperty('AH_TOKEN', token);
+    scriptProps.setProperty('AH_TOKEN_EXPIRY', (Date.now() + (expiresIn * 1000) - 60000).toString());
+    
+    return { ok: true, access_token: token };
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+}
+
+function handleAHSearch(e) {
+  const query = e.parameter.query;
+  const limit = parseInt(e.parameter.limit) || 10;
+  
+  if (!query || query.trim().length < 2) {
+    return { ok: true, products: [] };
+  }
+  
+  // Get token first
+  const tokenResult = handleAHToken(e);
+  if (!tokenResult.ok) {
+    return tokenResult;
+  }
+  
+  try {
+    const params = {
+      query: query.trim(),
+      page: '0',
+      size: limit.toString(),
+      sortOn: 'RELEVANCE'
+    };
+    
+    const queryString = Object.keys(params)
+      .map(key => encodeURIComponent(key) + '=' + encodeURIComponent(params[key]))
+      .join('&');
+    
+    const response = UrlFetchApp.fetch('https://api.ah.nl/mobile-services/product/search/v2?' + queryString, {
+      method: 'get',
+      headers: {
+        'Accept': 'application/json',
+        'Authorization': 'Bearer ' + tokenResult.access_token,
+        'x-client-name': 'appie-ios',
+        'x-client-version': '9.28',
+        'x-application': 'AHWEBSHOP'
+      },
+      muteHttpExceptions: true
+    });
+    
+    const data = JSON.parse(response.getContentText());
+    
+    if (response.getResponseCode() !== 200) {
+      return { ok: false, error: 'Search failed: ' + response.getResponseCode() };
+    }
+    
+    if (!data.products || !Array.isArray(data.products)) {
+      return { ok: true, products: [] };
+    }
+    
+    const products = data.products.map(function(product) {
+      return {
+        id: product.webshopId || 0,
+        title: product.title || 'Onbekend product',
+        brand: product.brand || '',
+        imageUrl: (product.images && product.images[0]) ? product.images[0].url : null,
+        price: product.currentPrice || product.priceBeforeBonus || 0,
+        oldPrice: product.priceBeforeBonus || 0,
+        unitSize: product.salesUnitSize || '',
+        isBonus: product.isBonus || false,
+        bonusMechanism: product.bonusMechanism || '',
+        category: product.mainCategory || '',
+        url: 'https://www.ah.nl/producten/product/wi' + (product.webshopId || 0)
+      };
+    });
+    
+    return { ok: true, products: products };
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
 }
