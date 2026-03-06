@@ -14,13 +14,15 @@ class AppieApiService {
       
       const params = new URLSearchParams({
         query: query.trim(),
-        limit: String(limit)
+        limit: String(limit),
+        _t: Date.now() // Cache busting parameter
       });
 
       const url = `${this.apiBaseUrl}?action=ahSearch&${params.toString()}`;
       
       const response = await fetch(url, {
-        method: 'GET'
+        method: 'GET',
+        cache: 'no-store' // Disable browser caching
       });
 
       if (!response.ok) {
